@@ -1,0 +1,343 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #0d1117;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Cinzel", "Georgia", serif;
+  touch-action: none;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+
+#hud-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.ui-interactive {
+  pointer-events: auto;
+}
+
+/* ==========================================================================
+   Loading Overlay
+   ========================================================================== */
+#loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at center, #1b2430 0%, #090d13 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+}
+
+.loading-card {
+  text-align: center;
+  max-width: 420px;
+  width: 88%;
+  background: rgba(22, 28, 38, 0.85);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 14px;
+  padding: 36px 28px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65), inset 0 0 20px rgba(212, 175, 55, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.heraldry-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 4px 10px rgba(212, 175, 55, 0.5));
+}
+
+.loading-card .title {
+  color: #f7e7b4;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+
+.loading-card .subtitle {
+  color: #a4b3c6;
+  font-size: 14px;
+  margin-bottom: 24px;
+  letter-spacing: 0.5px;
+}
+
+.progress-bar-track {
+  width: 100%;
+  height: 10px;
+  background: rgba(10, 14, 20, 0.8);
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  margin-bottom: 14px;
+}
+
+.progress-bar-fill {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, #b8860b 0%, #ffd700 50%, #f4d068 100%);
+  border-radius: 5px;
+  transition: width 0.15s ease-out;
+  box-shadow: 0 0 12px rgba(255, 215, 0, 0.6);
+}
+
+.asset-text {
+  color: #7d8b99;
+  font-size: 12px;
+  font-family: monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ==========================================================================
+   Top Location Banner
+   ========================================================================== */
+#location-banner {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  background: rgba(18, 24, 32, 0.75);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  padding: 8px 24px;
+  border-radius: 20px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  transition: transform 0.3s ease;
+}
+
+.banner-ornament {
+  color: #d4af37;
+  font-size: 10px;
+  letter-spacing: 6px;
+  margin-bottom: 2px;
+  opacity: 0.8;
+}
+
+.location-name {
+  color: #fff4d1;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+}
+
+.realm-tag {
+  color: #8b9bb0;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+#location-banner.pulse {
+  animation: bannerPulse 0.5s ease-out;
+}
+
+@keyframes bannerPulse {
+  0% { transform: translateX(-50%) scale(0.96); }
+  50% { transform: translateX(-50%) scale(1.04); }
+  100% { transform: translateX(-50%) scale(1); }
+}
+
+/* ==========================================================================
+   Minimap Radar
+   ========================================================================== */
+#minimap-wrapper {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+}
+
+.minimap-frame {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 2px solid #d4af37;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), inset 0 0 10px rgba(0, 0, 0, 0.8);
+  overflow: hidden;
+  background: #1b241c;
+}
+
+#minimap-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.compass-n {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #ff4757;
+  font-size: 11px;
+  font-weight: bold;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   Controls Hint Panel
+   ========================================================================== */
+#controls-hint {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  background: rgba(16, 22, 30, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 14px 18px;
+  backdrop-filter: blur(8px);
+  color: #cad5e2;
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  transition: opacity 0.5s ease;
+}
+
+.hint-header {
+  color: #d4af37;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.25);
+  padding-bottom: 4px;
+}
+
+.hint-row {
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hint-row:last-child {
+  margin-bottom: 0;
+}
+
+.key {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+/* ==========================================================================
+   Virtual Touch Joystick (Mobile)
+   ========================================================================== */
+#virtual-joystick-container {
+  position: fixed;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(212, 175, 55, 0.4);
+  pointer-events: none;
+  display: none;
+  z-index: 50;
+  box-shadow: 0 0 16px rgba(212, 175, 55, 0.2);
+}
+
+#virtual-joystick-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  margin-top: -22px;
+  margin-left: -22px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #f7e7b4 0%, #b8860b 100%);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   Mobile Sprint Button
+   ========================================================================== */
+#mobile-sprint-btn {
+  display: none;
+  position: absolute;
+  bottom: 30px;
+  right: 28px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(24, 32, 44, 0.85);
+  border: 2px solid #d4af37;
+  color: #ffd700;
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+#mobile-sprint-btn.active {
+  background: #b8860b;
+  color: #ffffff;
+  box-shadow: 0 0 16px #ffd700;
+  transform: scale(1.08);
+}
+
+@media (max-width: 768px), (pointer: coarse) {
+  #mobile-sprint-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #controls-hint {
+    display: none;
+  }
+
+  #location-banner {
+    top: 14px;
+    padding: 6px 16px;
+  }
+
+  .location-name {
+    font-size: 15px;
+  }
+
+  .minimap-frame {
+    width: 100px;
+    height: 100px;
+  }
+}
