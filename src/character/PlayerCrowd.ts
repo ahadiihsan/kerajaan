@@ -12,6 +12,7 @@ interface CrowdAgent {
   animPhase: number;
   isIdle: boolean;
   idleTimer: number;
+  isSitting: boolean; // Classic RO1 /sit
 }
 
 export class PlayerCrowd implements Updatable {
@@ -26,44 +27,44 @@ export class PlayerCrowd implements Updatable {
   private dummy: THREE.Object3D = new THREE.Object3D();
   private townMap: TownMap;
 
-  // Varied historical wardrobe palette
-  private tunicColors = [
-    new THREE.Color(0x2d4f7c), // Woad blue
-    new THREE.Color(0x853229), // Madder crimson
-    new THREE.Color(0x3d5a3f), // Forest green
-    new THREE.Color(0x735235), // Russet leather
-    new THREE.Color(0xb09146), // Saffron gold
-    new THREE.Color(0x56385a), // Muted plum
-    new THREE.Color(0x484440), // Charcoal
+  // Ragnarok Online job class color themes (Swordsman, Mage, Archer, Merchant, Thief, Novice)
+  private roColors = [
+    new THREE.Color(0x2d4f7c), // Swordsman blue
+    new THREE.Color(0xa33224), // Novice / Mage red
+    new THREE.Color(0x3d6b38), // Archer green
+    new THREE.Color(0x8c653a), // Merchant leather
+    new THREE.Color(0x403d42), // Thief charcoal
+    new THREE.Color(0xbf9c3b), // Acolyte gold
+    new THREE.Color(0x613d6e), // High Wizard purple
   ];
 
   constructor(townMap: TownMap, initialCount: number = 1000) {
     this.townMap = townMap;
     this.activeCount = Math.min(initialCount, this.maxCount);
     this.group = new THREE.Group();
-    this.group.name = 'HD2DPlayerCrowd';
+    this.group.name = 'RO1PronteraCrowd';
 
     this.initInstancedSprites();
     this.spawnAgents();
   }
 
   private initInstancedSprites(): void {
-    // 1. Instanced Contact Shadow Discs
-    const shadowGeo = new THREE.CircleGeometry(0.48, 8);
+    // 1. Soft Oval Drop Shadows
+    const shadowGeo = new THREE.CircleGeometry(0.5, 8);
     shadowGeo.rotateX(-Math.PI / 2);
     const shadowMat = new THREE.MeshBasicMaterial({
-      color: 0x120e0a,
+      color: 0x120d08,
       transparent: true,
-      opacity: 0.4,
+      opacity: 0.42,
       depthWrite: false
     });
     this.shadowMesh = new THREE.InstancedMesh(shadowGeo, shadowMat, this.maxCount);
     this.shadowMesh.count = this.activeCount;
     this.group.add(this.shadowMesh);
 
-    // 2. Instanced 2D Pixel Sprite Quads
-    const spriteGeo = new THREE.PlaneGeometry(1.7, 2.26);
-    spriteGeo.translate(0, 1.13, 0); // Pivot at feet
+    // 2. 2D Anime Pixel Billboard Sprites
+    const spriteGeo = new THREE.PlaneGeometry(1.8, 2.2);
+    spriteGeo.translate(0, 1.1, 0); // Pivot at feet
 
     const tex = PixelSpriteSheet.getTexture('down', 0);
     const spriteMat = new THREE.MeshBasicMaterial({
@@ -83,21 +84,28 @@ export class PlayerCrowd implements Updatable {
       const zone = Math.random();
       let sx = 0;
       let sz = 0;
+      let isSitting = false;
 
-      if (zone < 0.5) {
-        // Central Plaza
+      if (zone < 0.55) {
+        // Prontera Central Fountain Square (circle r < 20)
         const angle = Math.random() * Math.PI * 2;
-        const rad = 2.5 + Math.random() * 16.0;
+        const rad = 4.2 + Math.random() * 15.0;
         sx = Math.cos(angle) * rad;
         sz = Math.sin(angle) * rad;
-      } else if (zone < 0.75) {
-        // Main North-South Street
-        sx = (Math.random() - 0.5) * 5.0;
+
+        // In RO1 Prontera, ~45% of fountain crowd sits on the cobblestones!
+        if (Math.random() < 0.42) {
+          isSitting = true;
+        }
+      } else if (zone < 0.8) {
+        // Main South-North Avenue (Castle to South Gate)
+        sx = (Math.random() - 0.5) * 5.2;
         sz = (Math.random() - 0.5) * 80;
+        if (Math.random() < 0.2) isSitting = true;
       } else {
-        // Canal Bridge & East Quarter
-        sx = 16 + Math.random() * 18;
-        sz = (Math.random() - 0.5) * 30;
+        // East Canal & Vending Alley
+        sx = 14 + Math.random() * 18;
+        sz = (Math.random() - 0.5) * 35;
       }
 
       this.agents.push({
@@ -105,14 +113,15 @@ export class PlayerCrowd implements Updatable {
         z: sz,
         targetX: sx + (Math.random() - 0.5) * 20,
         targetZ: sz + (Math.random() - 0.5) * 20,
-        speed: 2.2 + Math.random() * 1.6,
+        speed: 2.2 + Math.random() * 1.8,
         animPhase: Math.random() * Math.PI * 2,
-        isIdle: Math.random() < 0.3,
-        idleTimer: Math.random() * 3,
+        isIdle: isSitting || Math.random() < 0.3,
+        idleTimer: isSitting ? 999999 : Math.random() * 4,
+        isSitting: isSitting,
       });
 
-      // Assign tint
-      const col = this.tunicColors[i % this.tunicColors.length];
+      // Assign RO1 class theme color
+      const col = this.roColors[i % this.roColors.length];
       this.spriteMesh.setColorAt(i, col);
     }
 
@@ -129,12 +138,14 @@ export class PlayerCrowd implements Updatable {
 
   public update(delta: number, _elapsed: number): void {
     const dummy = this.dummy;
-    const spriteTilt = THREE.MathUtils.degToRad(30); // Matches elevated diorama camera
+    const spriteTilt = THREE.MathUtils.degToRad(35); // Matches RO1 isometric camera angle
 
     for (let i = 0; i < this.activeCount; i++) {
       const a = this.agents[i];
 
-      if (a.isIdle) {
+      if (a.isSitting) {
+        // Classic RO1 sitting on the ground: no movement
+      } else if (a.isIdle) {
         a.idleTimer -= delta;
         if (a.idleTimer <= 0) {
           a.isIdle = false;
@@ -148,9 +159,9 @@ export class PlayerCrowd implements Updatable {
 
         if (dist < 1.0) {
           a.isIdle = Math.random() < 0.45;
-          a.idleTimer = 1.5 + Math.random() * 3.0;
-          a.targetX = (Math.random() - 0.5) * 50;
-          a.targetZ = (Math.random() - 0.5) * 60;
+          a.idleTimer = 1.5 + Math.random() * 3.5;
+          a.targetX = (Math.random() - 0.5) * 55;
+          a.targetZ = (Math.random() - 0.5) * 65;
         } else {
           const moveX = (dx / dist) * a.speed * delta;
           const moveZ = (dz / dist) * a.speed * delta;
@@ -167,17 +178,18 @@ export class PlayerCrowd implements Updatable {
         }
       }
 
-      const bob = a.isIdle ? 0 : Math.abs(Math.sin(a.animPhase)) * 0.05;
+      const bob = (a.isSitting || a.isIdle) ? 0 : Math.abs(Math.sin(a.animPhase)) * 0.05;
+      const posY = a.isSitting ? -0.2 : bob; // Lower sprite slightly when seated
 
-      // 1. Shadow Disc Matrix (Flat on ground)
+      // 1. Shadow Disc Matrix
       dummy.position.set(a.x, 0.02, a.z);
       dummy.rotation.set(0, 0, 0);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       this.shadowMesh.setMatrixAt(i, dummy.matrix);
 
-      // 2. 2D Billboard Sprite Matrix (Tilted to face elevated camera directly)
-      dummy.position.set(a.x, bob, a.z);
+      // 2. 2D Billboard Sprite Matrix
+      dummy.position.set(a.x, posY, a.z);
       dummy.rotation.set(spriteTilt, 0, 0);
       dummy.updateMatrix();
       this.spriteMesh.setMatrixAt(i, dummy.matrix);

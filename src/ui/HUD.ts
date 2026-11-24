@@ -12,7 +12,7 @@ export class HUD {
   private loadingBarFill!: HTMLElement;
   private loadingText!: HTMLElement;
 
-  // Performance & Crowd Monitor elements
+  // RO1 Classic Basic Info Window
   private fpsDisplay!: HTMLElement;
   private crowdCountDisplay!: HTMLElement;
   private frameCount: number = 0;
@@ -24,7 +24,7 @@ export class HUD {
   private input: InputManager;
   private crowd?: PlayerCrowd;
 
-  private currentLocation: string = 'Town Square Plaza';
+  private currentLocation: string = 'Prontera Central Fountain';
 
   constructor(townMap: TownMap, player: CharacterController, input: InputManager, crowd?: PlayerCrowd) {
     this.townMap = townMap;
@@ -39,9 +39,9 @@ export class HUD {
     this.buildLoadingScreen();
     this.buildTopBanner();
     this.buildMinimap();
-    this.buildPerformanceMonitor();
+    this.buildRO1BasicInfoWindow();
+    this.buildRO1ActionHotbar();
     this.buildControlsHint();
-    this.buildMobileTouchOverlay();
   }
 
   private buildLoadingScreen(): void {
@@ -49,13 +49,13 @@ export class HUD {
     this.loadingOverlay.id = 'loading-overlay';
     this.loadingOverlay.innerHTML = `
       <div class="loading-card">
-        <div class="heraldry-icon">🏰</div>
-        <h1 class="title">Elderstone Realm</h1>
-        <p class="subtitle">Simulating 1,000 Medieval Players...</p>
+        <div class="heraldry-icon">⚔️</div>
+        <h1 class="title">Ragnarok Online</h1>
+        <p class="subtitle">Entering Capital City Prontera (1,000 Players)...</p>
         <div class="progress-bar-track">
           <div id="progress-bar-fill" class="progress-bar-fill"></div>
         </div>
-        <div id="loading-asset-text" class="asset-text">Populating village...</div>
+        <div id="loading-asset-text" class="asset-text">Loading Prontera assets...</div>
       </div>
     `;
     this.container.appendChild(this.loadingOverlay);
@@ -70,7 +70,7 @@ export class HUD {
       this.loadingBarFill.style.width = `${pct}%`;
     }
     if (this.loadingText) {
-      this.loadingText.textContent = `Entering ${name}...`;
+      this.loadingText.textContent = `Connecting: ${name}...`;
     }
   }
 
@@ -87,9 +87,9 @@ export class HUD {
     this.locationBanner = document.createElement('div');
     this.locationBanner.id = 'location-banner';
     this.locationBanner.innerHTML = `
-      <div class="banner-ornament">✦ ✦ ✦</div>
-      <div id="location-name" class="location-name">Town Square Plaza</div>
-      <div class="realm-tag">Elderstone Kingdom</div>
+      <div class="banner-ornament">⚔ Prontera Capital ⚔</div>
+      <div id="location-name" class="location-name">Prontera Central Fountain</div>
+      <div class="realm-tag">Kingdom of Rune-Midgard</div>
     `;
     this.container.appendChild(this.locationBanner);
   }
@@ -110,38 +110,67 @@ export class HUD {
     this.minimapCtx = this.minimapCanvas.getContext('2d')!;
   }
 
-  private buildPerformanceMonitor(): void {
-    const perfCard = document.createElement('div');
-    perfCard.id = 'perf-monitor';
-    perfCard.className = 'ui-interactive';
-    perfCard.innerHTML = `
-      <div class="perf-header">
-        <span class="status-dot"></span>
-        <span class="perf-title">Load Test Monitor</span>
+  /**
+   * Classic Ragnarok Online 1 Basic Information Window
+   */
+  private buildRO1BasicInfoWindow(): void {
+    const roWindow = document.createElement('div');
+    roWindow.id = 'ro-info-window';
+    roWindow.className = 'ui-interactive';
+    roWindow.innerHTML = `
+      <div class="ro-window-titlebar">
+        <span class="ro-title-icon">⚔</span>
+        <span class="ro-title-text">Basic Info</span>
+        <span class="ro-window-close">-</span>
       </div>
-      <div class="perf-stats">
-        <div class="stat-item">
-          <span class="stat-label">FPS:</span>
-          <span id="fps-value" class="stat-val fps-good">60 FPS</span>
+      <div class="ro-window-body">
+        <div class="ro-char-name">Novice Traveler</div>
+        <div class="ro-char-job">Swordsman Lv. 99 / Job 50</div>
+        
+        <!-- HP Bar -->
+        <div class="ro-bar-row">
+          <span class="ro-bar-label">HP</span>
+          <div class="ro-bar-track">
+            <div class="ro-bar-fill hp-fill" style="width: 100%;"></div>
+            <span class="ro-bar-text">8,420 / 8,420</span>
+          </div>
         </div>
-        <div class="stat-item">
-          <span class="stat-label">Online:</span>
-          <span id="crowd-value" class="stat-val crowd-highlight">1,000 Players</span>
+
+        <!-- SP Bar -->
+        <div class="ro-bar-row">
+          <span class="ro-bar-label">SP</span>
+          <div class="ro-bar-track">
+            <div class="ro-bar-fill sp-fill" style="width: 100%;"></div>
+            <span class="ro-bar-text">620 / 620</span>
+          </div>
         </div>
-      </div>
-      <div class="crowd-presets">
-        <button class="preset-btn" data-count="100">100</button>
-        <button class="preset-btn" data-count="500">500</button>
-        <button class="preset-btn active" data-count="1000">1,000</button>
+
+        <!-- Live Server Status -->
+        <div class="ro-server-status">
+          <div class="ro-status-row">
+            <span class="ro-dot"></span>
+            <span class="ro-status-text">Server: Prontera 01</span>
+          </div>
+          <div class="ro-stats-row">
+            <span id="fps-value" class="ro-fps">75 FPS</span>
+            <span id="crowd-value" class="ro-crowd">1,000 Players</span>
+          </div>
+        </div>
+
+        <!-- Crowd Density Preset Buttons -->
+        <div class="crowd-presets">
+          <button class="preset-btn" data-count="100">100</button>
+          <button class="preset-btn" data-count="500">500</button>
+          <button class="preset-btn active" data-count="1000">1,000</button>
+        </div>
       </div>
     `;
-    this.container.appendChild(perfCard);
+    this.container.appendChild(roWindow);
 
-    this.fpsDisplay = perfCard.querySelector('#fps-value')!;
-    this.crowdCountDisplay = perfCard.querySelector('#crowd-value')!;
+    this.fpsDisplay = roWindow.querySelector('#fps-value')!;
+    this.crowdCountDisplay = roWindow.querySelector('#crowd-value')!;
 
-    // Preset buttons handlers
-    const btns = perfCard.querySelectorAll('.preset-btn');
+    const btns = roWindow.querySelectorAll('.preset-btn');
     btns.forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const count = parseInt((e.target as HTMLElement).getAttribute('data-count') || '1000', 10);
@@ -156,61 +185,60 @@ export class HUD {
     });
   }
 
+  /**
+   * Classic RO1 Action Hotbar (Sit/Stand, Emotes, Camera Reset)
+   */
+  private buildRO1ActionHotbar(): void {
+    const hotbar = document.createElement('div');
+    hotbar.id = 'ro-action-hotbar';
+    hotbar.className = 'ui-interactive';
+    hotbar.innerHTML = `
+      <button id="ro-btn-sit" class="ro-action-btn" title="Toggle Sit/Stand (/sit or press X)">🪑 Sit / Stand</button>
+      <button id="ro-btn-emote" class="ro-action-btn" title="Emote (/gg)">♥ Emote</button>
+      <button id="ro-btn-cam" class="ro-action-btn" title="Reset Camera">🎥 Reset Cam</button>
+    `;
+    this.container.appendChild(hotbar);
+
+    const sitBtn = hotbar.querySelector('#ro-btn-sit')!;
+    sitBtn.addEventListener('click', () => {
+      this.player.isSitting = !this.player.isSitting;
+      sitBtn.classList.toggle('active', this.player.isSitting);
+    });
+
+    const emoteBtn = hotbar.querySelector('#ro-btn-emote')!;
+    emoteBtn.addEventListener('click', () => {
+      this.showFloatingEmote('♥');
+    });
+
+    const camBtn = hotbar.querySelector('#ro-btn-cam')!;
+    camBtn.addEventListener('click', () => {
+      this.player.cameraDistance = 18.0;
+    });
+  }
+
+  private showFloatingEmote(symbol: string): void {
+    const bubble = document.createElement('div');
+    bubble.className = 'ro-emote-bubble';
+    bubble.textContent = symbol;
+    document.body.appendChild(bubble);
+
+    setTimeout(() => {
+      bubble.remove();
+    }, 1400);
+  }
+
   private buildControlsHint(): void {
     const hints = document.createElement('div');
     hints.id = 'controls-hint';
     hints.innerHTML = `
-      <div class="hint-header">Controls</div>
-      <div class="hint-row"><span class="key">W A S D</span> / <span class="key">Arrows</span> Move</div>
-      <div class="hint-row"><span class="key">Shift</span> Sprint</div>
-      <div class="hint-row"><span class="key">Mouse Drag</span> Look Orbit</div>
-      <div class="hint-row"><span class="key">Scroll</span> Zoom View</div>
+      <div class="hint-header">Ragnarok Online 1 Controls</div>
+      <div class="hint-row"><span class="key">Left Click</span> Move to Tile (Green Ripple)</div>
+      <div class="hint-row"><span class="key">Right Click Drag</span> Rotate Camera Orbit</div>
+      <div class="hint-row"><span class="key">Scroll</span> Zoom In / Out</div>
+      <div class="hint-row"><span class="key">X</span> or <span class="key">Insert</span> Toggle Sit (/sit)</div>
+      <div class="hint-row"><span class="key">W A S D</span> Keyboard Move</div>
     `;
     this.container.appendChild(hints);
-
-    let hasMoved = false;
-    const checkMove = () => {
-      if (Math.abs(this.input.state.moveX) > 0.1 || Math.abs(this.input.state.moveZ) > 0.1) {
-        if (!hasMoved) {
-          hasMoved = true;
-          setTimeout(() => {
-            hints.style.opacity = '0.35';
-          }, 3000);
-        }
-      }
-    };
-    window.addEventListener('keydown', checkMove);
-    window.addEventListener('touchstart', checkMove);
-  }
-
-  private buildMobileTouchOverlay(): void {
-    const joyContainer = document.createElement('div');
-    joyContainer.id = 'virtual-joystick-container';
-    joyContainer.innerHTML = `<div id="virtual-joystick-knob"></div>`;
-    this.container.appendChild(joyContainer);
-
-    const knob = joyContainer.querySelector('#virtual-joystick-knob') as HTMLElement;
-    this.input.setJoystickElements(joyContainer, knob);
-
-    const sprintBtn = document.createElement('button');
-    sprintBtn.id = 'mobile-sprint-btn';
-    sprintBtn.className = 'ui-interactive';
-    sprintBtn.innerHTML = `⚡ RUN`;
-    this.container.appendChild(sprintBtn);
-
-    let sprintActive = false;
-    sprintBtn.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      sprintActive = !sprintActive;
-      this.input.state.isSprinting = sprintActive;
-      sprintBtn.classList.toggle('active', sprintActive);
-    });
-
-    sprintBtn.addEventListener('click', () => {
-      sprintActive = !sprintActive;
-      this.input.state.isSprinting = sprintActive;
-      sprintBtn.classList.toggle('active', sprintActive);
-    });
   }
 
   public update(): void {
@@ -231,7 +259,6 @@ export class HUD {
 
       if (this.fpsDisplay) {
         this.fpsDisplay.textContent = `${this.currentFps} FPS`;
-        this.fpsDisplay.className = `stat-val ${this.currentFps >= 50 ? 'fps-good' : this.currentFps >= 35 ? 'fps-warn' : 'fps-bad'}`;
       }
     }
   }
@@ -253,7 +280,7 @@ export class HUD {
       }
     }
 
-    const newLoc = minDist < 24 ? closest.name : 'Elderstone Countryside';
+    const newLoc = minDist < 24 ? closest.name : 'Rune-Midgard Outskirts';
     if (newLoc !== this.currentLocation) {
       this.currentLocation = newLoc;
       const el = document.getElementById('location-name');
@@ -316,16 +343,11 @@ export class HUD {
       ctx.strokeRect(bx, by, bw, bh);
     }
 
-    // Landmarks
-    for (const lm of this.townMap.landmarks) {
-      const lx = centerX + (lm.x - px) * scale;
-      const ly = centerY + (lm.z - pz) * scale;
-
-      ctx.fillStyle = lm.type === 'hall' ? '#e5c158' : lm.type === 'tavern' ? '#5dade2' : '#f39c12';
-      ctx.beginPath();
-      ctx.arc(lx, ly, 3.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // Prontera Fountain Icon (Blue circle)
+    ctx.fillStyle = '#3498db';
+    ctx.beginPath();
+    ctx.arc(plazaX, plazaY, 5 * scale, 0, Math.PI * 2);
+    ctx.fill();
 
     // Player
     ctx.fillStyle = '#00e5ff';

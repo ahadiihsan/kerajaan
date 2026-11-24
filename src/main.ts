@@ -11,41 +11,44 @@ async function bootstrap() {
     // 1. Initialize Core Three.js Engine
     const engine = new Engine('app');
 
-    // 2. Setup Atmospheric Environment & Terrain
-    new Environment(engine.scene);
+    // 2. Setup Prontera Environment & Terrain
+    const env = new Environment(engine.scene);
 
-    // 3. Assemble Town Map (Low-Poly Procedural Architecture)
+    // 3. Assemble Prontera Town Map (Central Fountain, Vending Carts, Castle, Canal)
     const townMap = new TownMap();
     townMap.assembleTown();
     engine.scene.add(townMap.group);
 
-    // 4. Input & Player Character
+    // 4. Input Manager with RO1 Click-to-Move Raycasting on Ground
     const input = new InputManager();
+    input.initRaycaster(engine.camera, env.groundMesh);
+
+    // 5. Ragnarok Online Player Character (Click-to-Move, Sitting /sit, Nametag)
     const player = new CharacterController(engine.camera, input, townMap);
     engine.scene.add(player.mesh);
     engine.registerUpdatable(player);
 
-    // 5. Instanced 1,000 Player Crowd Simulation (Load Test)
+    // 6. Prontera 1,000 Player Crowd (Sitters, Wanders, Vending Banners)
     const crowd = new PlayerCrowd(townMap, 1000);
     engine.scene.add(crowd.group);
     engine.registerUpdatable(crowd);
 
-    // 6. UI HUD (Live FPS monitor, player count controls, minimap, banners)
+    // 7. RO1 Classic Windows HUD (Basic Info, HP/SP, Hotbar, Emotes, Minimap)
     const hud = new HUD(townMap, player, input, crowd);
     engine.registerUpdatable({
       update: () => hud.update()
     });
 
-    // 7. Reveal scene smoothly
-    hud.updateLoading(100, 100, 'Realm Ready');
+    // 8. Smooth reveal
+    hud.updateLoading(100, 100, 'Prontera');
     setTimeout(() => {
       hud.hideLoading();
     }, 250);
 
-    // 8. Start Game Loop
+    // 9. Start Game Loop
     engine.start();
 
-    console.log('🏰 1,000 Player Crowd Load Test active at locked 60 FPS!');
+    console.log('⚔️ Ragnarok Online 1 Prontera simulation initialized at 75 FPS!');
   } catch (err) {
     console.error('Initialization error:', err);
   }

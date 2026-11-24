@@ -13,6 +13,7 @@ html, body {
   background-color: #0d1117;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Cinzel", "Georgia", serif;
   touch-action: none;
+  cursor: crosshair;
 }
 
 #app {
@@ -22,18 +23,6 @@ html, body {
   top: 0;
   left: 0;
   z-index: 1;
-}
-
-/* ==========================================================================
-   Octopath Traveler HD-2D Tilt-Shift & Vignette Lens
-   ========================================================================== */
-#tilt-shift-lens {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 4;
-  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.55);
-  background: radial-gradient(circle at center, transparent 50%, rgba(12, 16, 22, 0.38) 100%);
 }
 
 #hud-container {
@@ -56,35 +45,34 @@ html, body {
 #loading-overlay {
   position: fixed;
   inset: 0;
-  background: radial-gradient(circle at center, #1b2430 0%, #090d13 100%);
+  background: radial-gradient(circle at center, #1e3799 0%, #0a1128 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
-  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.5s ease;
   pointer-events: auto;
 }
 
 .loading-card {
   text-align: center;
-  max-width: 420px;
+  max-width: 440px;
   width: 88%;
-  background: rgba(22, 28, 38, 0.85);
-  border: 1px solid rgba(212, 175, 55, 0.35);
-  border-radius: 14px;
+  background: rgba(16, 28, 64, 0.9);
+  border: 2px solid #f6b93b;
+  border-radius: 12px;
   padding: 36px 28px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65), inset 0 0 20px rgba(212, 175, 55, 0.08);
-  backdrop-filter: blur(12px);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.75), inset 0 0 20px rgba(246, 185, 59, 0.15);
 }
 
 .heraldry-icon {
   font-size: 48px;
   margin-bottom: 12px;
-  filter: drop-shadow(0 4px 10px rgba(212, 175, 55, 0.5));
+  filter: drop-shadow(0 4px 10px rgba(246, 185, 59, 0.5));
 }
 
 .loading-card .title {
-  color: #f7e7b4;
+  color: #fed330;
   font-size: 26px;
   font-weight: 700;
   letter-spacing: 2px;
@@ -94,65 +82,64 @@ html, body {
 }
 
 .loading-card .subtitle {
-  color: #a4b3c6;
+  color: #d1d8e0;
   font-size: 14px;
   margin-bottom: 24px;
-  letter-spacing: 0.5px;
 }
 
 .progress-bar-track {
   width: 100%;
-  height: 10px;
-  background: rgba(10, 14, 20, 0.8);
-  border-radius: 5px;
+  height: 12px;
+  background: rgba(6, 10, 24, 0.85);
+  border-radius: 6px;
   overflow: hidden;
-  border: 1px solid rgba(212, 175, 55, 0.25);
+  border: 1px solid #f6b93b;
   margin-bottom: 14px;
 }
 
 .progress-bar-fill {
   width: 0%;
   height: 100%;
-  background: linear-gradient(90deg, #b8860b 0%, #ffd700 50%, #f4d068 100%);
-  border-radius: 5px;
+  background: linear-gradient(90deg, #e58e26 0%, #f6b93b 50%, #fed330 100%);
+  border-radius: 6px;
   transition: width 0.15s ease-out;
-  box-shadow: 0 0 12px rgba(255, 215, 0, 0.6);
+  box-shadow: 0 0 12px rgba(246, 185, 59, 0.6);
 }
 
 .asset-text {
-  color: #7d8b99;
+  color: #a4b0be;
   font-size: 12px;
   font-family: monospace;
 }
 
 /* ==========================================================================
-   Top Location Banner
+   Top Location Banner (Prontera)
    ========================================================================== */
 #location-banner {
   position: absolute;
-  top: 20px;
+  top: 18px;
   left: 50%;
   transform: translateX(-50%);
   text-align: center;
-  background: rgba(18, 24, 32, 0.78);
-  border: 1px solid rgba(212, 175, 55, 0.35);
-  padding: 8px 24px;
-  border-radius: 20px;
+  background: rgba(14, 22, 42, 0.85);
+  border: 1.5px solid #f6b93b;
+  padding: 8px 26px;
+  border-radius: 18px;
   backdrop-filter: blur(8px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   transition: transform 0.3s ease;
 }
 
 .banner-ornament {
-  color: #d4af37;
-  font-size: 10px;
-  letter-spacing: 6px;
+  color: #fed330;
+  font-size: 11px;
+  letter-spacing: 4px;
   margin-bottom: 2px;
-  opacity: 0.85;
+  font-weight: bold;
 }
 
 .location-name {
-  color: #fff4d1;
+  color: #ffffff;
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 1.5px;
@@ -161,147 +148,260 @@ html, body {
 }
 
 .realm-tag {
-  color: #8b9bb0;
+  color: #70a1ff;
   font-size: 11px;
   letter-spacing: 1px;
   text-transform: uppercase;
-}
-
-#location-banner.pulse {
-  animation: bannerPulse 0.5s ease-out;
-}
-
-@keyframes bannerPulse {
-  0% { transform: translateX(-50%) scale(0.96); }
-  50% { transform: translateX(-50%) scale(1.04); }
-  100% { transform: translateX(-50%) scale(1); }
 }
 
 /* ==========================================================================
-   Live Performance & Crowd Monitor (Top-Left)
+   Classic Ragnarok Online 1 Basic Information Window (Top-Left)
    ========================================================================== */
-#perf-monitor {
+#ro-info-window {
   position: absolute;
-  top: 20px;
-  left: 20px;
-  background: rgba(16, 22, 30, 0.82);
-  border: 1px solid rgba(212, 175, 55, 0.35);
-  border-radius: 12px;
-  padding: 12px 16px;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  min-width: 175px;
+  top: 18px;
+  left: 18px;
+  width: 230px;
+  background: #2f3640;
+  border: 2px solid #718093;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  font-family: sans-serif;
+  overflow: hidden;
 }
 
-.perf-header {
+.ro-window-titlebar {
+  background: linear-gradient(90deg, #192a56 0%, #273c75 100%);
+  color: #ffffff;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: bold;
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: 6px;
+  justify-content: space-between;
+  border-bottom: 1px solid #718093;
 }
 
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #2ed573;
-  box-shadow: 0 0 8px #2ed573;
-  animation: pulseDot 2s infinite;
+.ro-title-icon {
+  font-size: 13px;
+  margin-right: 4px;
 }
 
-@keyframes pulseDot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.6; transform: scale(0.85); }
+.ro-window-close {
+  cursor: pointer;
+  padding: 0 4px;
+  font-weight: bold;
 }
 
-.perf-title {
-  color: #d4af37;
+.ro-window-body {
+  padding: 10px;
+  background: #353b48;
+}
+
+.ro-char-name {
+  color: #fed330;
+  font-weight: bold;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+.ro-char-job {
+  color: #dcdde1;
   font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  margin-bottom: 8px;
 }
 
-.perf-stats {
+.ro-bar-row {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 10px;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
 }
 
-.stat-item {
+.ro-bar-label {
+  color: #f5f6fa;
+  font-size: 11px;
+  font-weight: bold;
+  width: 22px;
+}
+
+.ro-bar-track {
+  flex: 1;
+  height: 14px;
+  background: #1e272e;
+  border: 1px solid #718093;
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+}
+
+.ro-bar-fill {
+  height: 100%;
+}
+
+.hp-fill {
+  background: linear-gradient(90deg, #44bd32 0%, #4cd137 100%);
+}
+
+.sp-fill {
+  background: linear-gradient(90deg, #0097e6 0%, #00a8ff 100%);
+}
+
+.ro-bar-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 9px;
+  font-weight: bold;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.ro-server-status {
+  background: #2f3640;
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.ro-status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #dcdde1;
+  margin-bottom: 4px;
+}
+
+.ro-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4cd137;
+  box-shadow: 0 0 6px #4cd137;
+}
+
+.ro-stats-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: bold;
 }
 
-.stat-label {
-  color: #8b9cb0;
+.ro-fps {
+  color: #4cd137;
 }
 
-.stat-val {
-  font-weight: 700;
-  font-family: monospace;
-}
-
-.fps-good {
-  color: #2ed573;
-  text-shadow: 0 0 8px rgba(46, 213, 115, 0.5);
-}
-
-.fps-warn {
-  color: #ffa502;
-}
-
-.fps-bad {
-  color: #ff4757;
-}
-
-.crowd-highlight {
-  color: #f5cd79;
+.ro-crowd {
+  color: #fed330;
 }
 
 .crowd-presets {
   display: flex;
-  gap: 6px;
+  gap: 4px;
 }
 
 .preset-btn {
   flex: 1;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: #ced6e0;
-  border-radius: 6px;
-  padding: 4px 6px;
+  background: #2f3640;
+  border: 1px solid #718093;
+  color: #f5f6fa;
+  border-radius: 4px;
+  padding: 4px;
   font-size: 10px;
   font-weight: bold;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .preset-btn:hover {
-  background: rgba(212, 175, 55, 0.25);
-  border-color: #d4af37;
-  color: #ffffff;
+  background: #4b6584;
 }
 
 .preset-btn.active {
-  background: #d4af37;
-  border-color: #ffd700;
-  color: #121820;
-  box-shadow: 0 0 10px rgba(212, 175, 55, 0.6);
+  background: #e1b12c;
+  color: #192a56;
+  border-color: #fbc531;
 }
 
 /* ==========================================================================
-   Minimap Radar
+   Classic RO1 Action Hotbar (Bottom Center)
+   ========================================================================== */
+#ro-action-hotbar {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  background: rgba(47, 54, 64, 0.85);
+  border: 2px solid #718093;
+  padding: 6px 12px;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.ro-action-btn {
+  background: linear-gradient(180deg, #485460 0%, #1e272e 100%);
+  border: 1px solid #718093;
+  color: #f5f6fa;
+  padding: 8px 14px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ro-action-btn:hover {
+  background: linear-gradient(180deg, #57606f 0%, #2f3542 100%);
+  border-color: #fed330;
+  color: #fed330;
+}
+
+.ro-action-btn.active {
+  background: #f6b93b;
+  color: #192a56;
+  border-color: #fed330;
+}
+
+/* ==========================================================================
+   RO1 Floating Emote Bubble
+   ========================================================================== */
+.ro-emote-bubble {
+  position: fixed;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -100%) scale(1);
+  background: #ffffff;
+  border: 2px solid #1e272e;
+  border-radius: 12px;
+  padding: 4px 12px;
+  font-size: 24px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  z-index: 100;
+  animation: emotePop 1.4s forwards;
+}
+
+@keyframes emotePop {
+  0% { transform: translate(-50%, -80%) scale(0.4); opacity: 0; }
+  15% { transform: translate(-50%, -120%) scale(1.15); opacity: 1; }
+  30% { transform: translate(-50%, -110%) scale(1); opacity: 1; }
+  80% { transform: translate(-50%, -110%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -130%) scale(0.8); opacity: 0; }
+}
+
+/* ==========================================================================
+   Minimap Radar (Prontera Top-Right)
    ========================================================================== */
 #minimap-wrapper {
   position: absolute;
-  top: 20px;
-  right: 20px;
+  top: 18px;
+  right: 18px;
 }
 
 .minimap-frame {
@@ -309,7 +409,7 @@ html, body {
   width: 140px;
   height: 140px;
   border-radius: 50%;
-  border: 2px solid #d4af37;
+  border: 2.5px solid #f6b93b;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), inset 0 0 10px rgba(0, 0, 0, 0.8);
   overflow: hidden;
   background: #1b241c;
@@ -340,136 +440,53 @@ html, body {
   position: absolute;
   bottom: 24px;
   left: 24px;
-  background: rgba(16, 22, 30, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
-  padding: 14px 18px;
+  background: rgba(47, 54, 64, 0.82);
+  border: 1.5px solid #718093;
+  border-radius: 8px;
+  padding: 12px 16px;
   backdrop-filter: blur(8px);
-  color: #cad5e2;
-  font-size: 13px;
+  color: #f5f6fa;
+  font-size: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  transition: opacity 0.5s ease;
 }
 
 .hint-header {
-  color: #d4af37;
-  font-size: 12px;
+  color: #fed330;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
-  margin-bottom: 8px;
-  border-bottom: 1px solid rgba(212, 175, 55, 0.25);
-  padding-bottom: 4px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid rgba(254, 211, 48, 0.3);
+  padding-bottom: 3px;
 }
 
 .hint-row {
-  margin-bottom: 5px;
+  margin-bottom: 4px;
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.hint-row:last-child {
-  margin-bottom: 0;
-}
-
 .key {
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 4px;
-  padding: 2px 6px;
-  font-size: 11px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
   font-weight: 600;
   color: #ffffff;
 }
 
-/* ==========================================================================
-   Virtual Touch Joystick (Mobile)
-   ========================================================================== */
-#virtual-joystick-container {
-  position: fixed;
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  border: 2px solid rgba(212, 175, 55, 0.4);
-  pointer-events: none;
-  display: none;
-  z-index: 50;
-  box-shadow: 0 0 16px rgba(212, 175, 55, 0.2);
-}
-
-#virtual-joystick-knob {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 44px;
-  height: 44px;
-  margin-top: -22px;
-  margin-left: -22px;
-  border-radius: 50%;
-  background: radial-gradient(circle, #f7e7b4 0%, #b8860b 100%);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
-  pointer-events: none;
-}
-
-/* ==========================================================================
-   Mobile Sprint Button
-   ========================================================================== */
-#mobile-sprint-btn {
-  display: none;
-  position: absolute;
-  bottom: 30px;
-  right: 28px;
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: rgba(24, 32, 44, 0.85);
-  border: 2px solid #d4af37;
-  color: #ffd700;
-  font-size: 12px;
-  font-weight: bold;
-  letter-spacing: 0.5px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(8px);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-#mobile-sprint-btn.active {
-  background: #b8860b;
-  color: #ffffff;
-  box-shadow: 0 0 16px #ffd700;
-  transform: scale(1.08);
-}
-
-@media (max-width: 768px), (pointer: coarse) {
-  #mobile-sprint-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
+@media (max-width: 768px) {
   #controls-hint {
     display: none;
   }
-
-  #location-banner {
-    top: 14px;
-    padding: 6px 16px;
+  #ro-info-window {
+    top: 10px;
+    left: 10px;
+    width: 170px;
   }
-
-  .location-name {
-    font-size: 14px;
-  }
-
-  #perf-monitor {
-    top: 14px;
-    left: 14px;
-    padding: 8px 10px;
-    min-width: 130px;
-  }
-
   .minimap-frame {
     width: 90px;
     height: 90px;

@@ -22,24 +22,22 @@ export class TownMap {
 
   constructor() {
     this.group = new THREE.Group();
-    this.group.name = 'HD2DTownMap';
+    this.group.name = 'PronteraTownMap';
   }
 
   public assembleTown(): void {
-    // 1. Central Plaza & Water Canal Diorama
-    this.buildMarketPlaza();
+    // 1. Central Prontera Fountain & Vending Carts
+    this.buildPronteraPlaza();
     this.buildWaterCanalAndBridge();
 
-    // 2. Major Landmark Buildings
+    // 2. Prontera Castle & The Pub
     this.buildLandmarkBuildings();
 
-    // 3. Residential Districts & Alleys
+    // 3. Residential & Artisan Quarters
     this.buildResidentialDistricts();
 
-    // 4. Watchtowers, Street Lanterns & Perimeter Fences
-    this.buildDefensesAndLanterns();
-
-    // 5. Stylized Trees & Diorama Foliage
+    // 4. Street Lanterns & Outskirts
+    this.buildStreetLanterns();
     this.buildFoliage();
   }
 
@@ -69,64 +67,72 @@ export class TownMap {
     });
   }
 
-  private buildMarketPlaza(): void {
+  private buildPronteraPlaza(): void {
     this.landmarks.push({
-      name: 'Sunshade Town Square',
+      name: 'Prontera Central Fountain',
       x: 0,
       z: 0,
       type: 'plaza'
     });
 
-    // Central Stone Well
-    const well = LowPolyBuilder.createCentralWell();
-    well.position.set(0, 0, 0);
-    this.group.add(well);
+    // 1. Iconic Prontera Central Water Fountain
+    const fountain = LowPolyBuilder.createPronteraFountain();
+    fountain.position.set(0, 0, 0);
+    this.group.add(fountain);
     this.collisionBoxes.push({
-      minX: -1.8,
-      maxX: 1.8,
-      minZ: -1.8,
-      maxZ: 1.8
+      minX: -3.8,
+      maxX: 3.8,
+      minZ: -3.8,
+      maxZ: 3.8
     });
 
-    // 4 Market Stalls with historical linen & vegetable dye awnings
-    const stall1 = LowPolyBuilder.createMarketStall(LowPolyPalette.canvasEcru);
-    this.addBuildingInstance(stall1, -8, -8, Math.PI / 4, 3.0, 2.0);
+    // 2. Ragnarok Online Vending Carts around the fountain plaza
+    const cart1 = LowPolyBuilder.createVendingCart(LowPolyPalette.cartRed, 'Red Potions & Wings');
+    cart1.position.set(-8, 0, -6);
+    cart1.rotation.y = Math.PI / 4;
+    this.group.add(cart1);
+    this.collisionBoxes.push({ minX: -9.0, maxX: -7.0, minZ: -7.0, maxZ: -5.0 });
 
-    const stall2 = LowPolyBuilder.createMarketStall(LowPolyPalette.madderRed);
-    this.addBuildingInstance(stall2, 8, -8, -Math.PI / 4, 3.0, 2.0);
+    const cart2 = LowPolyBuilder.createVendingCart(LowPolyPalette.cartBlue, '+7 Damascus & Katana');
+    cart2.position.set(8, 0, -6);
+    cart2.rotation.y = -Math.PI / 4;
+    this.group.add(cart2);
+    this.collisionBoxes.push({ minX: 7.0, maxX: 9.0, minZ: -7.0, maxZ: -5.0 });
 
-    const stall3 = LowPolyBuilder.createMarketStall(LowPolyPalette.weldYellow);
-    this.addBuildingInstance(stall3, -8, 8, (3 * Math.PI) / 4, 3.0, 2.0);
+    const cart3 = LowPolyBuilder.createVendingCart(LowPolyPalette.cartYellow, 'Buying Jellopy 25z');
+    cart3.position.set(-8, 0, 6);
+    cart3.rotation.y = (3 * Math.PI) / 4;
+    this.group.add(cart3);
+    this.collisionBoxes.push({ minX: -9.0, maxX: -7.0, minZ: 5.0, maxZ: 7.0 });
 
-    const stall4 = LowPolyBuilder.createMarketStall(LowPolyPalette.roofBlue);
-    this.addBuildingInstance(stall4, 8, 8, -(3 * Math.PI) / 4, 3.0, 2.0);
+    const cart4 = LowPolyBuilder.createVendingCart(LowPolyPalette.cartRed, 'Santa Hat & Bunny Band');
+    cart4.position.set(8, 0, 6);
+    cart4.rotation.y = -(3 * Math.PI) / 4;
+    this.group.add(cart4);
+    this.collisionBoxes.push({ minX: 7.0, maxX: 9.0, minZ: 5.0, maxZ: 7.0 });
   }
 
   private buildWaterCanalAndBridge(): void {
-    // Water Canal running N-S along X = 20
+    // Water Canal along X = 20
     const canalW = 4.5;
     const canalL = 90;
-    const water = new THREE.Mesh(
-      new THREE.PlaneGeometry(canalW, canalL),
-      LowPolyPalette.water
-    );
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(canalW, canalL), LowPolyPalette.water);
     water.rotation.x = -Math.PI / 2;
     water.position.set(20, 0.08, 0);
     this.group.add(water);
 
-    // Stone Canal Banks (Left & Right retaining walls)
     const bankGeo = new THREE.BoxGeometry(0.6, 0.4, canalL);
-    const leftBank = new THREE.Mesh(bankGeo, LowPolyPalette.stoneDark);
+    const leftBank = new THREE.Mesh(bankGeo, LowPolyPalette.fountainMarble);
     leftBank.position.set(17.8, 0.2, 0);
     leftBank.castShadow = true;
     this.group.add(leftBank);
 
-    const rightBank = new THREE.Mesh(bankGeo, LowPolyPalette.stoneDark);
+    const rightBank = new THREE.Mesh(bankGeo, LowPolyPalette.fountainMarble);
     rightBank.position.set(22.2, 0.2, 0);
     rightBank.castShadow = true;
     this.group.add(rightBank);
 
-    // Wooden Footbridge crossing the canal at Z = 0
+    // Wooden Footbridge crossing canal
     const bridge = new THREE.Group();
     bridge.position.set(20, 0, 0);
 
@@ -136,51 +142,37 @@ export class TownMap {
     bridgeDeck.receiveShadow = true;
     bridge.add(bridgeDeck);
 
-    // Bridge Railings
     const railGeo = new THREE.BoxGeometry(5.2, 0.8, 0.12);
     const railL = new THREE.Mesh(railGeo, LowPolyPalette.woodDark);
     railL.position.set(0, 0.85, -1.5);
-    railL.castShadow = true;
     bridge.add(railL);
 
     const railR = new THREE.Mesh(railGeo, LowPolyPalette.woodDark);
     railR.position.set(0, 0.85, 1.5);
-    railR.castShadow = true;
     bridge.add(railR);
 
     this.group.add(bridge);
 
-    // Water Canal Collision (except across the bridge at |Z| < 2.0)
-    this.collisionBoxes.push({
-      minX: 18.0,
-      maxX: 22.0,
-      minZ: -45,
-      maxZ: -2.0,
-    });
-    this.collisionBoxes.push({
-      minX: 18.0,
-      maxX: 22.0,
-      minZ: 2.0,
-      maxZ: 45,
-    });
+    this.collisionBoxes.push({ minX: 18.0, maxX: 22.0, minZ: -45, maxZ: -2.0 });
+    this.collisionBoxes.push({ minX: 18.0, maxX: 22.0, minZ: 2.0, maxZ: 45 });
   }
 
   private buildLandmarkBuildings(): void {
-    // 1. Grand Town Hall (North of the plaza)
-    const townHall = LowPolyBuilder.createTownHall();
-    this.addBuildingInstance(townHall, 0, -28, 0, 9.6, 12.0);
+    // Prontera Castle / Grand Hall
+    const castleHall = LowPolyBuilder.createTownHall();
+    this.addBuildingInstance(castleHall, 0, -28, 0, 9.6, 12.0);
     this.landmarks.push({
-      name: 'Elderstone Town Hall',
+      name: 'Prontera Castle Gate',
       x: 0,
       z: -28,
       type: 'hall'
     });
 
-    // 2. The Boar & Flagon Tavern (West of the plaza)
+    // Prontera Pub & Tavern
     const tavern = LowPolyBuilder.createTavern();
     this.addBuildingInstance(tavern, -22, 0, Math.PI / 2, 8.4, 10.0);
     this.landmarks.push({
-      name: 'The Boar & Flagon Tavern',
+      name: 'Prontera Pub & Inn',
       x: -22,
       z: 0,
       type: 'tavern'
@@ -188,7 +180,7 @@ export class TownMap {
   }
 
   private buildResidentialDistricts(): void {
-    // East Canal Quarter (across the bridge)
+    // East Canal Quarter (Weapon & Armor Smithy)
     const h1 = LowPolyBuilder.createHouseMedium('terracotta');
     this.addBuildingInstance(h1, 30, -6, -Math.PI / 2, 5.4, 7.0);
 
@@ -218,7 +210,7 @@ export class TownMap {
     const h5 = LowPolyBuilder.createHouseMedium('terracotta');
     this.addBuildingInstance(h5, -36, 20, Math.PI / 2, 5.4, 7.0);
 
-    // South Gate District
+    // South Gate District (Road to Poring Field!)
     const h6 = LowPolyBuilder.createHouseMedium('green');
     this.addBuildingInstance(h6, -14, 28, 0, 5.4, 7.0);
 
@@ -230,56 +222,38 @@ export class TownMap {
 
     const c6 = LowPolyBuilder.createCottage('slate');
     this.addBuildingInstance(c6, 12, 42, 0, 4.6, 6.0);
+
+    this.landmarks.push({
+      name: 'Prontera South Gate (Poring Field)',
+      x: 0,
+      z: 50,
+      type: 'gate'
+    });
   }
 
-  private buildDefensesAndLanterns(): void {
-    // North Watchtower
-    const towerNorth = LowPolyBuilder.createWatchTower();
-    this.addBuildingInstance(towerNorth, 10, -52, 0, 5.5, 5.5);
-    this.landmarks.push({
-      name: 'North Watchtower',
-      x: 10,
-      z: -52,
-      type: 'tower'
-    });
-
-    // South Watchtower
-    const towerSouth = LowPolyBuilder.createWatchTower();
-    this.addBuildingInstance(towerSouth, -10, 52, Math.PI, 5.5, 5.5);
-    this.landmarks.push({
-      name: 'South Outpost',
-      x: -10,
-      z: 52,
-      type: 'tower'
-    });
-
-    // Wooden Lamp Posts with glowing lanterns
+  private buildStreetLanterns(): void {
     const lampCoords = [
       { x: -5, z: -5 },
       { x: 5, z: -5 },
       { x: -5, z: 5 },
       { x: 5, z: 5 },
-      { x: 18, z: -2 }, // Bridge lantern
+      { x: 18, z: -2 },
       { x: 18, z: 2 },
-      { x: -16, z: 0 }, // Tavern entrance
-      { x: 0, z: -18 }, // Town Hall approach
+      { x: -16, z: 0 },
+      { x: 0, z: -18 },
     ];
 
     lampCoords.forEach((coord) => {
       const lamp = new THREE.Group();
       lamp.position.set(coord.x, 0, coord.z);
 
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 2.6, 6), LowPolyPalette.woodDark);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 2.6, 6), LowPolyPalette.fountainMarble);
       post.position.y = 1.3;
       post.castShadow = true;
       lamp.add(post);
 
-      const lanternArm = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 0.08), LowPolyPalette.iron);
-      lanternArm.position.set(0.2, 2.5, 0);
-      lamp.add(lanternArm);
-
       const lanternGlass = new THREE.Mesh(new THREE.DodecahedronGeometry(0.18), LowPolyPalette.lanternGlow);
-      lanternGlass.position.set(0.4, 2.3, 0);
+      lanternGlass.position.set(0, 2.6, 0);
       lamp.add(lanternGlass);
 
       this.group.add(lamp);
@@ -291,27 +265,6 @@ export class TownMap {
         maxZ: coord.z + 0.4,
       });
     });
-
-    // Fences
-    const fencePositions = [
-      { x: -8, z: -52, rotY: 0 },
-      { x: -14, z: -52, rotY: 0 },
-      { x: 16, z: -52, rotY: 0 },
-      { x: 8, z: 52, rotY: 0 },
-      { x: -16, z: 52, rotY: 0 },
-      { x: -42, z: -16, rotY: Math.PI / 2 },
-      { x: -42, z: -8, rotY: Math.PI / 2 },
-      { x: -42, z: 0, rotY: Math.PI / 2 },
-      { x: -42, z: 8, rotY: Math.PI / 2 },
-      { x: -42, z: 16, rotY: Math.PI / 2 },
-    ];
-
-    fencePositions.forEach((fp) => {
-      const fence = LowPolyBuilder.createFence();
-      fence.position.set(fp.x, 0, fp.z);
-      fence.rotation.y = fp.rotY;
-      this.group.add(fence);
-    });
   }
 
   private buildFoliage(): void {
@@ -319,11 +272,8 @@ export class TownMap {
       { x: -6, z: -62, type: 'pine', s: 1.1 },
       { x: 6, z: -62, type: 'oak', s: 1.0 },
       { x: -22, z: -60, type: 'pine', s: 1.2 },
-      { x: -36, z: -46, type: 'pine', s: 1.0 },
       { x: -6, z: 62, type: 'oak', s: 1.1 },
       { x: 6, z: 62, type: 'pine', s: 1.2 },
-      { x: -22, z: 60, type: 'oak', s: 1.0 },
-      { x: -36, z: 46, type: 'pine', s: 1.05 },
       { x: 48, z: -18, type: 'oak', s: 1.1 },
       { x: 48, z: 8, type: 'pine', s: 1.2 },
       { x: -48, z: -18, type: 'pine', s: 1.15 },
