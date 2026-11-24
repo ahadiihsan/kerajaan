@@ -101,7 +101,7 @@ export class InputManager {
         this.lastMouseY = e.clientY;
 
         this.state.lookDeltaX += dx * 0.005;
-        this.state.lookDeltaY += dy * 0.005;
+        this.state.lookDeltaY = 0; // Vertical camera tilt disabled
       }
 
       if (this.isLeftMouseDown) {

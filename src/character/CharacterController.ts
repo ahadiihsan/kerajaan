@@ -44,7 +44,7 @@ export class CharacterController implements Updatable {
 
   public cameraDistance: number = 12.0;
   public cameraYaw: number = 0;
-  private cameraPitch: number = 0.52;
+  public readonly cameraPitch: number = 0.65; // Fixed RO1 isometric elevation angle (vertical tilt disabled)
   public facingAngle: number = 0; // World facing angle (0 = South / +Z)
 
   constructor(camera: THREE.PerspectiveCamera, input: InputManager, townMap: TownMap) {
@@ -201,10 +201,9 @@ export class CharacterController implements Updatable {
       this.mesh.parent.add(this.rippleMesh);
     }
 
-    // Camera Orbit
-    const { dx, dy } = this.input.consumeLookDelta();
+    // Camera Orbit: Horizontal yaw orbit only (vertical tilt disabled for authentic fixed RO1 isometric view)
+    const { dx } = this.input.consumeLookDelta();
     this.cameraYaw -= dx;
-    this.cameraPitch = Math.max(0.25, Math.min(1.25, this.cameraPitch + dy));
 
     const zoom = this.input.consumeZoomDelta();
     this.cameraDistance = Math.max(8.0, Math.min(32.0, this.cameraDistance + zoom));

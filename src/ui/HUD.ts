@@ -232,6 +232,7 @@ export class HUD {
     const camBtn = hotbar.querySelector('#ro-btn-cam')!;
     camBtn.addEventListener('click', () => {
       this.player.cameraDistance = 12.0;
+      this.player.cameraYaw = 0;
     });
   }
 
