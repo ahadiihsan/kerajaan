@@ -54,12 +54,12 @@ export class HUD {
   }
 
   public updateLoading(loaded: number, total: number, name: string): void {
-    const pct = Math.floor((loaded / total) * 100);
+    const pct = total > 0 ? Math.floor((loaded / total) * 100) : 100;
     if (this.loadingBarFill) {
       this.loadingBarFill.style.width = `${pct}%`;
     }
     if (this.loadingText) {
-      this.loadingText.textContent = `Assembling: ${name} (${loaded}/${total})`;
+      this.loadingText.textContent = `Entering ${name}...`;
     }
   }
 

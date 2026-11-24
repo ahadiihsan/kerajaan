@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import { AssetManager } from '../core/AssetManager';
-import { BlueprintLibrary, BuildingBlueprint } from './Blueprints';
+import { LowPolyBuilder, LowPolyPalette } from './LowPolyBuilder';
 
 export interface CollisionBox {
   minX: number;
@@ -20,47 +19,43 @@ export class TownMap {
   public group: THREE.Group;
   public collisionBoxes: CollisionBox[] = [];
   public landmarks: Landmark[] = [];
-  private assetMgr: AssetManager;
 
-  constructor(assetMgr: AssetManager) {
-    this.assetMgr = assetMgr;
+  constructor() {
     this.group = new THREE.Group();
     this.group.name = 'TownMap';
   }
 
   public assembleTown(): void {
-    // 1. Build Key Landmark Buildings
-    this.buildLandmarks();
-
-    // 2. Build Residential & Merchant Districts
-    this.buildResidentialQuarters();
-
-    // 3. Build Central Market Plaza Props & Well
+    // 1. Build Central Plaza Landmarks & Market
     this.buildMarketPlaza();
 
-    // 4. Build Defensive Watchtowers & Perimeter Fences
+    // 2. Build Major Landmark Buildings
+    this.buildLandmarkBuildings();
+
+    // 3. Build Residential Districts & Alleys
+    this.buildResidentialDistricts();
+
+    // 4. Build Watchtowers & Perimeter Fences
     this.buildDefensesAndFences();
 
-    // 5. Build Surrounding Foliage / Trees & Props
-    this.buildFoliageAndProps();
+    // 5. Build Trees, Foliage & Ambient Props
+    this.buildTreesAndProps();
   }
 
-  private addBuilding(
-    blueprint: BuildingBlueprint,
+  private addBuildingInstance(
+    mesh: THREE.Group,
     posX: number,
     posZ: number,
-    rotY: number = 0
-  ): THREE.Group {
-    const building = BlueprintLibrary.instantiate(blueprint, this.assetMgr);
-    building.position.set(posX, 0, posZ);
-    building.rotation.y = rotY;
-    this.group.add(building);
+    rotY: number = 0,
+    width: number = 5.0,
+    depth: number = 6.0
+  ): void {
+    mesh.position.set(posX, 0, posZ);
+    mesh.rotation.y = rotY;
+    this.group.add(mesh);
 
-    // Calculate transformed collision bounding box
-    const halfW = blueprint.collisionBox.width / 2;
-    const halfD = blueprint.collisionBox.depth / 2;
-
-    // Support 90-degree rotations cleanly
+    const halfW = width / 2;
+    const halfD = depth / 2;
     const isRotated90 = Math.abs(Math.sin(rotY)) > 0.7;
     const finalHalfW = isRotated90 ? halfD : halfW;
     const finalHalfD = isRotated90 ? halfW : halfD;
@@ -71,69 +66,80 @@ export class TownMap {
       minZ: posZ - finalHalfD,
       maxZ: posZ + finalHalfD,
     });
-
-    return building;
   }
 
-  private buildLandmarks(): void {
-    // 1. Grand Town Hall (North of the main plaza)
-    this.addBuilding(BlueprintLibrary.getTownHall(), 0, -26, 0);
-    this.landmarks.push({
-      name: 'Elderstone Town Hall',
-      x: 0,
-      z: -26,
-      type: 'hall'
-    });
-
-    // 2. The Boar & Flagon Tavern (West of the main plaza)
-    this.addBuilding(BlueprintLibrary.getTavern(), -22, 0, Math.PI / 2);
-    this.landmarks.push({
-      name: 'The Boar & Flagon Tavern',
-      x: -22,
-      z: 0,
-      type: 'tavern'
-    });
-
-    // Central Plaza Landmark
+  private buildMarketPlaza(): void {
+    // 1. Central Plaza Landmark
     this.landmarks.push({
       name: 'Town Square Plaza',
       x: 0,
       z: 0,
       type: 'plaza'
     });
+
+    // 2. Central Well
+    const well = LowPolyBuilder.createCentralWell();
+    well.position.set(0, 0, 0);
+    this.group.add(well);
+    this.collisionBoxes.push({
+      minX: -1.8,
+      maxX: 1.8,
+      minZ: -1.8,
+      maxZ: 1.8
+    });
+
+    // 3. 4 Colorful Market Stalls in Plaza corners
+    const stall1 = LowPolyBuilder.createMarketStall(LowPolyPalette.roofTerracotta);
+    this.addBuildingInstance(stall1, -8, -8, Math.PI / 4, 3.0, 2.0);
+
+    const stall2 = LowPolyBuilder.createMarketStall(LowPolyPalette.roofBlue);
+    this.addBuildingInstance(stall2, 8, -8, -Math.PI / 4, 3.0, 2.0);
+
+    const stall3 = LowPolyBuilder.createMarketStall(LowPolyPalette.roofGreen);
+    this.addBuildingInstance(stall3, -8, 8, (3 * Math.PI) / 4, 3.0, 2.0);
+
+    const stall4 = LowPolyBuilder.createMarketStall(LowPolyPalette.gold);
+    this.addBuildingInstance(stall4, 8, 8, -(3 * Math.PI) / 4, 3.0, 2.0);
   }
 
-  private buildResidentialQuarters(): void {
-    const house = BlueprintLibrary.getHouseMedium();
-    const cottage = BlueprintLibrary.getCottageSmall();
+  private buildLandmarkBuildings(): void {
+    // 1. Grand Town Hall (North of the plaza)
+    const townHall = LowPolyBuilder.createTownHall();
+    this.addBuildingInstance(townHall, 0, -28, 0, 9.6, 12.0);
+    this.landmarks.push({
+      name: 'Elderstone Town Hall',
+      x: 0,
+      z: -28,
+      type: 'hall'
+    });
 
-    // East Street (Craftsmen & Residences)
-    this.addBuilding(house, 22, -6, -Math.PI / 2);
-    this.addBuilding(house, 22, 10, -Math.PI / 2);
-    this.addBuilding(cottage, 34, -12, 0);
-    this.addBuilding(cottage, 34, 4, 0);
-    this.addBuilding(cottage, 34, 18, 0);
+    // 2. The Boar & Flagon Tavern (West of the plaza)
+    const tavern = LowPolyBuilder.createTavern();
+    this.addBuildingInstance(tavern, -22, 0, Math.PI / 2, 8.4, 10.0);
+    this.landmarks.push({
+      name: 'The Boar & Flagon Tavern',
+      x: -22,
+      z: 0,
+      type: 'tavern'
+    });
+  }
 
-    // North-East Quarter
-    this.addBuilding(house, 16, -38, Math.PI);
-    this.addBuilding(cottage, 30, -32, -Math.PI / 2);
+  private buildResidentialDistricts(): void {
+    // East Artisan Row
+    const h1 = LowPolyBuilder.createHouseMedium('terracotta');
+    this.addBuildingInstance(h1, 22, -6, -Math.PI / 2, 5.4, 7.0);
 
-    // North-West Quarter
-    this.addBuilding(house, -16, -38, Math.PI);
-    this.addBuilding(cottage, -30, -32, Math.PI / 2);
-    this.addBuilding(cottage, -34, -16, 0);
+    const h2 = LowPolyBuilder.createHouseMedium('green');
+    this.addBuildingInstance(h2, 22, 10, -Math.PI / 2, 5.4, 7.0);
 
-    // West Residential Alley (behind Tavern)
-    this.addBuilding(cottage, -36, 6, Math.PI / 2);
-    this.addBuilding(house, -36, 20, Math.PI / 2);
+    const c1 = LowPolyBuilder.createCottage('terracotta');
+    this.addBuildingInstance(c1, 34, -12, 0, 4.6, 6.0);
 
-    // South District (Approaching South Gate)
-    this.addBuilding(house, -14, 28, 0);
-    this.addBuilding(house, 14, 28, 0);
-    this.addBuilding(cottage, -16, 44, 0);
-    this.addBuilding(cottage, 16, 44, 0);
-    this.addBuilding(cottage, -30, 36, Math.PI / 2);
-    this.addBuilding(cottage, 30, 36, -Math.PI / 2);
+    const c2 = LowPolyBuilder.createCottage('slate');
+    this.addBuildingInstance(c2, 34, 4, 0, 4.6, 6.0);
+
+    const c3 = LowPolyBuilder.createCottage('green');
+    this.addBuildingInstance(c3, 34, 18, 0, 4.6, 6.0);
 
     this.landmarks.push({
       name: 'East Artisan Row',
@@ -141,88 +147,52 @@ export class TownMap {
       z: 4,
       type: 'residential'
     });
+
+    // North-East & North-West Quarters
+    const h3 = LowPolyBuilder.createHouseMedium('terracotta');
+    this.addBuildingInstance(h3, 16, -40, Math.PI, 5.4, 7.0);
+
+    const c4 = LowPolyBuilder.createCottage('terracotta');
+    this.addBuildingInstance(c4, 30, -34, -Math.PI / 2, 4.6, 6.0);
+
+    const h4 = LowPolyBuilder.createHouseMedium('green');
+    this.addBuildingInstance(h4, -16, -40, Math.PI, 5.4, 7.0);
+
+    const c5 = LowPolyBuilder.createCottage('slate');
+    this.addBuildingInstance(c5, -30, -34, Math.PI / 2, 4.6, 6.0);
+
+    // West Residential Alley (behind Tavern)
+    const c6 = LowPolyBuilder.createCottage('terracotta');
+    this.addBuildingInstance(c6, -36, 6, Math.PI / 2, 4.6, 6.0);
+
+    const h5 = LowPolyBuilder.createHouseMedium('terracotta');
+    this.addBuildingInstance(h5, -36, 20, Math.PI / 2, 5.4, 7.0);
+
     this.landmarks.push({
       name: 'West Alley Quarter',
       x: -28,
       z: 16,
       type: 'residential'
     });
-  }
 
-  private buildMarketPlaza(): void {
-    const stall = BlueprintLibrary.getMarketStall();
+    // South Gate District
+    const h6 = LowPolyBuilder.createHouseMedium('green');
+    this.addBuildingInstance(h6, -14, 28, 0, 5.4, 7.0);
 
-    // 4 Market Stalls in Plaza corners facing inward
-    this.addBuilding(stall, -8, -8, Math.PI / 4);
-    this.addBuilding(stall, 8, -8, -Math.PI / 4);
-    this.addBuilding(stall, -8, 8, (3 * Math.PI) / 4);
-    this.addBuilding(stall, 8, 8, -(3 * Math.PI) / 4);
+    const h7 = LowPolyBuilder.createHouseMedium('terracotta');
+    this.addBuildingInstance(h7, 14, 28, 0, 5.4, 7.0);
 
-    // Center Plaza Monument / Well
-    const wellGroup = new THREE.Group();
-    wellGroup.position.set(0, 0, 0);
+    const c7 = LowPolyBuilder.createCottage('terracotta');
+    this.addBuildingInstance(c7, -16, 44, 0, 4.6, 6.0);
 
-    // Stone well ring using textured cylinder
-    const wellBase = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.5, 1.6, 1.0, 16),
-      new THREE.MeshStandardMaterial({ color: 0x6e6860, roughness: 0.85 })
-    );
-    wellBase.position.y = 0.5;
-    wellBase.castShadow = true;
-    wellBase.receiveShadow = true;
-    wellGroup.add(wellBase);
-
-    // Water surface inside well
-    const water = new THREE.Mesh(
-      new THREE.CircleGeometry(1.3, 16),
-      new THREE.MeshStandardMaterial({ color: 0x1d3c4d, roughness: 0.1, metalness: 0.8 })
-    );
-    water.rotation.x = -Math.PI / 2;
-    water.position.y = 0.75;
-    wellGroup.add(water);
-
-    // Wooden roof posts
-    const postMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 0.9 });
-    const post1 = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.4), postMat);
-    post1.position.set(-1.1, 1.5, 0);
-    post1.castShadow = true;
-    wellGroup.add(post1);
-
-    const post2 = post1.clone();
-    post2.position.set(1.1, 1.5, 0);
-    wellGroup.add(post2);
-
-    // Cross beam
-    const beam = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.14, 0.14), postMat);
-    beam.position.set(0, 2.5, 0);
-    beam.castShadow = true;
-    wellGroup.add(beam);
-
-    // Pitch tiled roof from the kit
-    const wellRoof = this.assetMgr.getClone('Roof_RoundTile_2x1') ||
-                     this.assetMgr.getClone('Roof_RoundTiles_4x4');
-    if (wellRoof) {
-      wellRoof.position.set(0, 2.7, 0);
-      wellRoof.scale.set(0.65, 0.65, 0.65);
-      wellGroup.add(wellRoof);
-    }
-
-    this.group.add(wellGroup);
-
-    // Collision for central well
-    this.collisionBoxes.push({
-      minX: -2.0,
-      maxX: 2.0,
-      minZ: -2.0,
-      maxZ: 2.0
-    });
+    const c8 = LowPolyBuilder.createCottage('slate');
+    this.addBuildingInstance(c8, 16, 44, 0, 4.6, 6.0);
   }
 
   private buildDefensesAndFences(): void {
-    const tower = BlueprintLibrary.getWatchTower();
-
-    // North Watchtower (Overlooking North Gate)
-    this.addBuilding(tower, 12, -54, 0);
+    // North Watchtower
+    const towerNorth = LowPolyBuilder.createWatchTower();
+    this.addBuildingInstance(towerNorth, 12, -54, 0, 5.5, 5.5);
     this.landmarks.push({
       name: 'North Gate & Watchtower',
       x: 12,
@@ -230,8 +200,9 @@ export class TownMap {
       type: 'tower'
     });
 
-    // South Watchtower (Overlooking South Gate)
-    this.addBuilding(tower, -12, 54, Math.PI);
+    // South Watchtower
+    const towerSouth = LowPolyBuilder.createWatchTower();
+    this.addBuildingInstance(towerSouth, -12, 54, Math.PI, 5.5, 5.5);
     this.landmarks.push({
       name: 'South Outpost Tower',
       x: -12,
@@ -239,144 +210,93 @@ export class TownMap {
       type: 'tower'
     });
 
-    // Perimeter Wooden Fences enclosing the village lots
-    const fencePositions: { x: number; z: number; rotY: number }[] = [
-      // North boundary line
+    // Perimeter Wooden Fences
+    const fencePositions = [
       { x: -8, z: -54, rotY: 0 },
       { x: -14, z: -54, rotY: 0 },
       { x: -20, z: -54, rotY: 0 },
-      { x: -26, z: -54, rotY: 0 },
       { x: 18, z: -54, rotY: 0 },
       { x: 24, z: -54, rotY: 0 },
-      { x: 30, z: -54, rotY: 0 },
-
-      // South boundary line
       { x: 8, z: 54, rotY: 0 },
       { x: 14, z: 54, rotY: 0 },
-      { x: 20, z: 54, rotY: 0 },
       { x: -18, z: 54, rotY: 0 },
       { x: -24, z: 54, rotY: 0 },
-      { x: -30, z: 54, rotY: 0 },
-
-      // East boundary line
-      { x: 44, z: -20, rotY: Math.PI / 2 },
-      { x: 44, z: -12, rotY: Math.PI / 2 },
-      { x: 44, z: -4, rotY: Math.PI / 2 },
-      { x: 44, z: 4, rotY: Math.PI / 2 },
-      { x: 44, z: 12, rotY: Math.PI / 2 },
-      { x: 44, z: 20, rotY: Math.PI / 2 },
-      { x: 44, z: 28, rotY: Math.PI / 2 },
-
-      // West boundary line
-      { x: -44, z: -20, rotY: Math.PI / 2 },
-      { x: -44, z: -12, rotY: Math.PI / 2 },
-      { x: -44, z: -4, rotY: Math.PI / 2 },
-      { x: -44, z: 4, rotY: Math.PI / 2 },
-      { x: -44, z: 12, rotY: Math.PI / 2 },
-      { x: -44, z: 20, rotY: Math.PI / 2 },
-      { x: -44, z: 28, rotY: Math.PI / 2 },
+      { x: 44, z: -16, rotY: Math.PI / 2 },
+      { x: 44, z: -8, rotY: Math.PI / 2 },
+      { x: 44, z: 0, rotY: Math.PI / 2 },
+      { x: 44, z: 8, rotY: Math.PI / 2 },
+      { x: 44, z: 16, rotY: Math.PI / 2 },
+      { x: -44, z: -16, rotY: Math.PI / 2 },
+      { x: -44, z: -8, rotY: Math.PI / 2 },
+      { x: -44, z: 0, rotY: Math.PI / 2 },
+      { x: -44, z: 8, rotY: Math.PI / 2 },
+      { x: -44, z: 16, rotY: Math.PI / 2 },
     ];
 
     fencePositions.forEach((fp) => {
-      const fenceClone = this.assetMgr.getClone('Prop_WoodenFence_Extension1') ||
-                         this.assetMgr.getClone('Prop_WoodenFence_Single');
-      if (fenceClone) {
-        fenceClone.position.set(fp.x, 0, fp.z);
-        fenceClone.rotation.y = fp.rotY;
-        this.group.add(fenceClone);
+      const fence = LowPolyBuilder.createFence();
+      fence.position.set(fp.x, 0, fp.z);
+      fence.rotation.y = fp.rotY;
+      this.group.add(fence);
 
-        // Fence collision
-        this.collisionBoxes.push({
-          minX: fp.x - 1.6,
-          maxX: fp.x + 1.6,
-          minZ: fp.z - 0.4,
-          maxZ: fp.z + 0.4
-        });
-      }
+      this.collisionBoxes.push({
+        minX: fp.x - 1.5,
+        maxX: fp.x + 1.5,
+        minZ: fp.z - 0.3,
+        maxZ: fp.z + 0.3
+      });
     });
   }
 
-  private buildFoliageAndProps(): void {
-    // Beautiful stylized medieval pine and oak trees around the village boundaries
-    const treeTrunkGeo = new THREE.CylinderGeometry(0.3, 0.45, 2.5, 6);
-    const pineGeo1 = new THREE.ConeGeometry(2.4, 3.2, 7);
-    const pineGeo2 = new THREE.ConeGeometry(1.9, 2.8, 7);
-    const pineGeo3 = new THREE.ConeGeometry(1.3, 2.2, 7);
-
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x422a18, roughness: 0.9 });
-    const leafMat1 = new THREE.MeshStandardMaterial({ color: 0x274921, roughness: 0.8 });
-    const leafMat2 = new THREE.MeshStandardMaterial({ color: 0x365e2e, roughness: 0.8 });
-
-    const createPineTree = (x: number, z: number, scale: number = 1.0) => {
-      const tree = new THREE.Group();
-      tree.position.set(x, 0, z);
-      tree.scale.setScalar(scale);
-
-      const trunk = new THREE.Mesh(treeTrunkGeo, trunkMat);
-      trunk.position.y = 1.25;
-      trunk.castShadow = true;
-      tree.add(trunk);
-
-      const cone1 = new THREE.Mesh(pineGeo1, leafMat1);
-      cone1.position.y = 3.0;
-      cone1.castShadow = true;
-      cone1.receiveShadow = true;
-      tree.add(cone1);
-
-      const cone2 = new THREE.Mesh(pineGeo2, leafMat2);
-      cone2.position.y = 4.4;
-      cone2.castShadow = true;
-      cone2.receiveShadow = true;
-      tree.add(cone2);
-
-      const cone3 = new THREE.Mesh(pineGeo3, leafMat1);
-      cone3.position.y = 5.6;
-      cone3.castShadow = true;
-      cone3.receiveShadow = true;
-      tree.add(cone3);
-
-      this.group.add(tree);
-
-      // Tree trunk collision
-      this.collisionBoxes.push({
-        minX: x - 0.6 * scale,
-        maxX: x + 0.6 * scale,
-        minZ: z - 0.6 * scale,
-        maxZ: z + 0.6 * scale,
-      });
-    };
-
-    // Scatter trees along perimeter meadows and gardens
+  private buildTreesAndProps(): void {
     const treeCoords = [
       // North grove
-      { x: -5, z: -62 }, { x: 5, z: -64 }, { x: -22, z: -62 }, { x: 24, z: -62 },
-      { x: -38, z: -48 }, { x: 38, z: -48 },
-      // South forest fringe
-      { x: -5, z: 62 }, { x: 5, z: 65 }, { x: -22, z: 64 }, { x: 22, z: 63 },
-      { x: -38, z: 48 }, { x: 38, z: 48 },
+      { x: -5, z: -64, type: 'pine', s: 1.1 },
+      { x: 5, z: -66, type: 'oak', s: 1.0 },
+      { x: -24, z: -62, type: 'pine', s: 1.2 },
+      { x: 26, z: -62, type: 'oak', s: 1.05 },
+      { x: -38, z: -48, type: 'pine', s: 1.0 },
+      { x: 38, z: -48, type: 'oak', s: 1.15 },
+      // South forest
+      { x: -5, z: 64, type: 'oak', s: 1.1 },
+      { x: 5, z: 66, type: 'pine', s: 1.2 },
+      { x: -22, z: 64, type: 'oak', s: 1.0 },
+      { x: 24, z: 64, type: 'pine', s: 1.15 },
+      { x: -38, z: 48, type: 'pine', s: 1.05 },
+      { x: 38, z: 48, type: 'oak', s: 1.2 },
       // East orchard
-      { x: 52, z: -25 }, { x: 55, z: -10 }, { x: 54, z: 5 }, { x: 52, z: 20 },
-      { x: 56, z: 35 },
+      { x: 52, z: -20, type: 'oak', s: 1.1 },
+      { x: 55, z: -6, type: 'pine', s: 1.2 },
+      { x: 54, z: 8, type: 'oak', s: 1.0 },
+      { x: 52, z: 22, type: 'pine', s: 1.15 },
       // West woodland
-      { x: -52, z: -25 }, { x: -55, z: -10 }, { x: -54, z: 5 }, { x: -52, z: 20 },
-      { x: -56, z: 35 },
-      // Town garden pockets
-      { x: -26, z: -8 }, { x: -24, z: 28 }, { x: 24, z: -26 }
+      { x: -52, z: -20, type: 'pine', s: 1.15 },
+      { x: -55, z: -6, type: 'oak', s: 1.05 },
+      { x: -54, z: 8, type: 'pine', s: 1.2 },
+      { x: -52, z: 22, type: 'oak', s: 1.1 },
+      // Pockets in town
+      { x: -26, z: -8, type: 'oak', s: 0.9 },
+      { x: -24, z: 28, type: 'pine', s: 0.95 },
+      { x: 24, z: -26, type: 'oak', s: 0.9 }
     ];
 
-    treeCoords.forEach((tc, idx) => {
-      const scale = 0.85 + (idx % 4) * 0.15;
-      createPineTree(tc.x, tc.z, scale);
+    treeCoords.forEach((tc) => {
+      const tree = LowPolyBuilder.createTree(tc.type as 'pine' | 'oak', tc.s);
+      tree.position.set(tc.x, 0, tc.z);
+      this.group.add(tree);
+
+      this.collisionBoxes.push({
+        minX: tc.x - 0.5 * tc.s,
+        maxX: tc.x + 0.5 * tc.s,
+        minZ: tc.z - 0.5 * tc.s,
+        maxZ: tc.z + 0.5 * tc.s,
+      });
     });
   }
 
-  /**
-   * Collision resolution against town obstacles
-   * Returns adjusted [newX, newZ] pushing the player outside colliding boxes
-   */
   public resolveCollision(
-    currentX: number,
-    currentZ: number,
+    _currentX: number,
+    _currentZ: number,
     targetX: number,
     targetZ: number,
     playerRadius: number = 0.45
@@ -385,7 +305,6 @@ export class TownMap {
     let resolvedZ = targetZ;
     let collided = false;
 
-    // Check bounds against map perimeter
     const mapLimit = 85;
     if (Math.abs(resolvedX) > mapLimit) {
       resolvedX = Math.sign(resolvedX) * mapLimit;
@@ -402,11 +321,8 @@ export class TownMap {
       const minZ = box.minZ - playerRadius;
       const maxZ = box.maxZ + playerRadius;
 
-      // Is the player inside this expanded box?
       if (resolvedX > minX && resolvedX < maxX && resolvedZ > minZ && resolvedZ < maxZ) {
         collided = true;
-
-        // Push out along the shallowest penetration axis
         const dx1 = resolvedX - minX;
         const dx2 = maxX - resolvedX;
         const dz1 = resolvedZ - minZ;
