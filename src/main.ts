@@ -1,3 +1,4 @@
+import './firebase';
 import { Engine } from './core/Engine';
 import { Environment } from './core/Environment';
 import { TownMap } from './map/TownMap';

@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "kerajaan-app"
+  },
+  "targets": {
+    "kerajaan-app": {
+      "hosting": {
+        "kerajaan": [
+          "kerajaan"
+        ]
+      }
+    }
+  }
+}
