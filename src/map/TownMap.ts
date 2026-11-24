@@ -88,17 +88,17 @@ export class TownMap {
       maxZ: 1.8
     });
 
-    // 3. 4 Colorful Market Stalls in Plaza corners
-    const stall1 = LowPolyBuilder.createMarketStall(LowPolyPalette.roofTerracotta);
+    // 3. 4 Authentic Market Stalls with natural linen/vegetable dye awnings
+    const stall1 = LowPolyBuilder.createMarketStall(LowPolyPalette.canvasEcru);
     this.addBuildingInstance(stall1, -8, -8, Math.PI / 4, 3.0, 2.0);
 
-    const stall2 = LowPolyBuilder.createMarketStall(LowPolyPalette.roofBlue);
+    const stall2 = LowPolyBuilder.createMarketStall(LowPolyPalette.madderRed);
     this.addBuildingInstance(stall2, 8, -8, -Math.PI / 4, 3.0, 2.0);
 
-    const stall3 = LowPolyBuilder.createMarketStall(LowPolyPalette.roofGreen);
+    const stall3 = LowPolyBuilder.createMarketStall(LowPolyPalette.weldYellow);
     this.addBuildingInstance(stall3, -8, 8, (3 * Math.PI) / 4, 3.0, 2.0);
 
-    const stall4 = LowPolyBuilder.createMarketStall(LowPolyPalette.gold);
+    const stall4 = LowPolyBuilder.createMarketStall(LowPolyPalette.roofBlue);
     this.addBuildingInstance(stall4, 8, 8, -(3 * Math.PI) / 4, 3.0, 2.0);
   }
 

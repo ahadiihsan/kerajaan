@@ -14,17 +14,17 @@ export class Environment {
   }
 
   private setupLighting(): void {
-    // 1. Soft Hemisphere Ambient (Sunlit sky + warm ground bounce)
-    this.hemiLight = new THREE.HemisphereLight(0xdceeff, 0x4a3c2c, 0.95);
+    // 1. Soft Hemisphere Ambient (Warm sky + earth bounce)
+    this.hemiLight = new THREE.HemisphereLight(0xdeeeff, 0x5a4533, 1.05);
     this.hemiLight.position.set(0, 50, 0);
     this.scene.add(this.hemiLight);
 
-    // 2. Directional Sun Light
-    this.dirLight = new THREE.DirectionalLight(0xfff5e4, 2.0);
-    this.dirLight.position.set(50, 80, 45);
+    // 2. Warm Directional Sunlight
+    this.dirLight = new THREE.DirectionalLight(0xfff3dc, 2.2);
+    this.dirLight.position.set(55, 85, 48);
     this.dirLight.castShadow = true;
 
-    // Optimized mobile-friendly shadow map (1024x1024 is fast and crisp for low-poly)
+    // Mobile-friendly shadow map
     this.dirLight.shadow.mapSize.width = 1024;
     this.dirLight.shadow.mapSize.height = 1024;
     this.dirLight.shadow.camera.near = 10;
@@ -36,27 +36,27 @@ export class Environment {
     this.dirLight.shadow.camera.top = d;
     this.dirLight.shadow.camera.bottom = -d;
 
-    this.dirLight.shadow.bias = -0.0004;
-    this.dirLight.shadow.normalBias = 0.04;
+    this.dirLight.shadow.bias = -0.0003;
+    this.dirLight.shadow.normalBias = 0.035;
 
     this.scene.add(this.dirLight);
     this.scene.add(this.dirLight.target);
   }
 
   private setupSkyAndFog(): void {
-    const fogColor = new THREE.Color(0xb2d1e8);
+    const fogColor = new THREE.Color(0xbdd6e8);
     this.scene.background = fogColor;
-    this.scene.fog = new THREE.FogExp2(fogColor.getHex(), 0.007);
+    this.scene.fog = new THREE.FogExp2(fogColor.getHex(), 0.0065);
 
-    // Atmospheric low-poly sky dome
+    // Atmospheric warm sky dome
     const skyGeo = new THREE.SphereGeometry(380, 24, 16);
     const skyMat = new THREE.ShaderMaterial({
       side: THREE.BackSide,
       depthWrite: false,
       uniforms: {
-        topColor: { value: new THREE.Color(0x3a6994) },
-        horizonColor: { value: new THREE.Color(0xb2d1e8) },
-        sunPosition: { value: new THREE.Vector3(50, 80, 45).normalize() },
+        topColor: { value: new THREE.Color(0x32618d) },
+        horizonColor: { value: new THREE.Color(0xbdd6e8) },
+        sunPosition: { value: new THREE.Vector3(55, 85, 48).normalize() },
       },
       vertexShader: `
         varying vec3 vWorldPosition;
@@ -76,7 +76,7 @@ export class Environment {
           float h = max(0.0, dir.y);
           vec3 sky = mix(horizonColor, topColor, pow(h, 0.6));
           float sunGlow = max(0.0, dot(dir, sunPosition));
-          sky += vec3(1.0, 0.95, 0.8) * pow(sunGlow, 24.0) * 0.4;
+          sky += vec3(1.0, 0.94, 0.8) * pow(sunGlow, 24.0) * 0.45;
           gl_FragColor = vec4(sky, 1.0);
         }
       `
@@ -88,7 +88,7 @@ export class Environment {
 
   private setupTerrain(): void {
     const size = 320;
-    const segments = 64; // Low poly terrain segments for max performance
+    const segments = 64;
     const geo = new THREE.PlaneGeometry(size, size, segments, segments);
     geo.rotateX(-Math.PI / 2);
 
@@ -109,15 +109,15 @@ export class Environment {
     }
     geo.computeVertexNormals();
 
-    // Stylized procedural terrain material: rich stylized cobblestone, dirt borders & meadow grass
+    // Natural weathered cobblestone, rich meadow grass, and warm loam pathways
     const terrainMat = new THREE.ShaderMaterial({
       uniforms: {
-        grassColor: { value: new THREE.Color(0x4a7c36) },
-        grassDarkColor: { value: new THREE.Color(0x355e24) },
-        dirtColor: { value: new THREE.Color(0x6b553e) },
-        stoneColor: { value: new THREE.Color(0x7d7770) },
-        stoneDarkColor: { value: new THREE.Color(0x56504a) },
-        mortarColor: { value: new THREE.Color(0x403c37) },
+        grassColor: { value: new THREE.Color(0x50793a) },
+        grassDarkColor: { value: new THREE.Color(0x385726) },
+        dirtColor: { value: new THREE.Color(0x75604b) },
+        stoneColor: { value: new THREE.Color(0x9a9184) },
+        stoneDarkColor: { value: new THREE.Color(0x7e7568) },
+        mortarColor: { value: new THREE.Color(0x5a5146) },
       },
       vertexShader: `
         varying vec3 vWorldPos;
@@ -154,41 +154,40 @@ export class Environment {
           vec2 xz = vWorldPos.xz;
           float dist = length(xz);
 
-          // Stylized Grass
-          float gn = noise(xz * 0.25) * 0.7 + noise(xz * 0.6) * 0.3;
+          // Organic meadow grass with gentle noise
+          float gn = noise(xz * 0.22) * 0.7 + noise(xz * 0.5) * 0.3;
           vec3 grass = mix(grassDarkColor, grassColor, gn);
 
-          // Central Plaza & Main Streets
+          // Central Plaza & Main thoroughfares
           float inPlaza = smoothstep(25.0, 21.0, dist);
           float streetNS = smoothstep(5.0, 3.5, abs(xz.x)) * smoothstep(68.0, 18.0, abs(xz.y));
           float streetEW = smoothstep(4.5, 3.2, abs(xz.y)) * smoothstep(65.0, 18.0, abs(xz.x));
           float roadFactor = max(inPlaza, max(streetNS, streetEW));
 
-          // Stylized Cobblestone paver pattern
+          // Natural weathered cobblestone masonry pattern
           vec2 uvP = xz * 0.75;
-          // Stagger alternate rows
           if (mod(floor(uvP.y), 2.0) > 0.5) {
             uvP.x += 0.5;
           }
           vec2 tileId = floor(uvP);
           vec2 tileUv = fract(uvP) - 0.5;
 
-          float stoneNoise = hash(tileId);
-          vec3 paverColor = mix(stoneColor, stoneDarkColor, stoneNoise * 0.6);
+          float stoneVariation = hash(tileId);
+          vec3 paver = mix(stoneColor, stoneDarkColor, stoneVariation * 0.65);
 
-          // Mortar gap between stones
+          // Soft mortar lines between pavers
           float edge = max(abs(tileUv.x), abs(tileUv.y));
-          float mortarGap = smoothstep(0.40, 0.48, edge);
-          vec3 cobble = mix(paverColor, mortarColor, mortarGap);
+          float mortarGap = smoothstep(0.38, 0.48, edge);
+          vec3 cobble = mix(paver, mortarColor, mortarGap);
 
-          // Path border blend
-          float dirtBorder = smoothstep(6.5, 4.2, abs(xz.x)) * 0.4 + smoothstep(6.0, 3.8, abs(xz.y)) * 0.4;
+          // Warm dirt border blending into grass
+          float dirtBorder = smoothstep(6.5, 4.2, abs(xz.x)) * 0.45 + smoothstep(6.0, 3.8, abs(xz.y)) * 0.45;
           vec3 streetBlend = mix(dirtColor, cobble, roadFactor);
 
-          vec3 finalColor = mix(grass, streetBlend, clamp(roadFactor + dirtBorder * 0.6, 0.0, 1.0));
+          vec3 finalColor = mix(grass, streetBlend, clamp(roadFactor + dirtBorder * 0.65, 0.0, 1.0));
 
-          // Simple directional lighting
-          vec3 sunDir = normalize(vec3(50.0, 80.0, 45.0));
+          // Soft directional sunlight calculation
+          vec3 sunDir = normalize(vec3(55.0, 85.0, 48.0));
           float diff = max(0.3, dot(vNormal, sunDir));
           gl_FragColor = vec4(finalColor * (diff * 0.75 + 0.35), 1.0);
         }

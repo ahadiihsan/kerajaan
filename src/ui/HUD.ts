@@ -1,6 +1,7 @@
-import { TownMap, Landmark } from '../map/TownMap';
+import { TownMap } from '../map/TownMap';
 import { CharacterController } from '../character/CharacterController';
 import { InputManager } from '../character/InputManager';
+import { PlayerCrowd } from '../character/PlayerCrowd';
 
 export class HUD {
   private container: HTMLElement;
@@ -11,16 +12,25 @@ export class HUD {
   private loadingBarFill!: HTMLElement;
   private loadingText!: HTMLElement;
 
+  // Performance & Crowd Monitor elements
+  private fpsDisplay!: HTMLElement;
+  private crowdCountDisplay!: HTMLElement;
+  private frameCount: number = 0;
+  private lastFpsTime: number = performance.now();
+  private currentFps: number = 60;
+
   private townMap: TownMap;
   private player: CharacterController;
   private input: InputManager;
+  private crowd?: PlayerCrowd;
 
   private currentLocation: string = 'Town Square Plaza';
 
-  constructor(townMap: TownMap, player: CharacterController, input: InputManager) {
+  constructor(townMap: TownMap, player: CharacterController, input: InputManager, crowd?: PlayerCrowd) {
     this.townMap = townMap;
     this.player = player;
     this.input = input;
+    this.crowd = crowd;
 
     this.container = document.createElement('div');
     this.container.id = 'hud-container';
@@ -29,6 +39,7 @@ export class HUD {
     this.buildLoadingScreen();
     this.buildTopBanner();
     this.buildMinimap();
+    this.buildPerformanceMonitor();
     this.buildControlsHint();
     this.buildMobileTouchOverlay();
   }
@@ -40,11 +51,11 @@ export class HUD {
       <div class="loading-card">
         <div class="heraldry-icon">🏰</div>
         <h1 class="title">Elderstone Realm</h1>
-        <p class="subtitle">Constructing Medieval Village Map...</p>
+        <p class="subtitle">Simulating 1,000 Medieval Players...</p>
         <div class="progress-bar-track">
           <div id="progress-bar-fill" class="progress-bar-fill"></div>
         </div>
-        <div id="loading-asset-text" class="asset-text">Preparing assets...</div>
+        <div id="loading-asset-text" class="asset-text">Populating village...</div>
       </div>
     `;
     this.container.appendChild(this.loadingOverlay);
@@ -68,7 +79,7 @@ export class HUD {
       this.loadingOverlay.style.opacity = '0';
       setTimeout(() => {
         this.loadingOverlay.style.display = 'none';
-      }, 600);
+      }, 500);
     }
   }
 
@@ -99,6 +110,52 @@ export class HUD {
     this.minimapCtx = this.minimapCanvas.getContext('2d')!;
   }
 
+  private buildPerformanceMonitor(): void {
+    const perfCard = document.createElement('div');
+    perfCard.id = 'perf-monitor';
+    perfCard.className = 'ui-interactive';
+    perfCard.innerHTML = `
+      <div class="perf-header">
+        <span class="status-dot"></span>
+        <span class="perf-title">Load Test Monitor</span>
+      </div>
+      <div class="perf-stats">
+        <div class="stat-item">
+          <span class="stat-label">FPS:</span>
+          <span id="fps-value" class="stat-val fps-good">60 FPS</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Online:</span>
+          <span id="crowd-value" class="stat-val crowd-highlight">1,000 Players</span>
+        </div>
+      </div>
+      <div class="crowd-presets">
+        <button class="preset-btn" data-count="100">100</button>
+        <button class="preset-btn" data-count="500">500</button>
+        <button class="preset-btn active" data-count="1000">1,000</button>
+      </div>
+    `;
+    this.container.appendChild(perfCard);
+
+    this.fpsDisplay = perfCard.querySelector('#fps-value')!;
+    this.crowdCountDisplay = perfCard.querySelector('#crowd-value')!;
+
+    // Preset buttons handlers
+    const btns = perfCard.querySelectorAll('.preset-btn');
+    btns.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const count = parseInt((e.target as HTMLElement).getAttribute('data-count') || '1000', 10);
+        btns.forEach((b) => b.classList.remove('active'));
+        (e.target as HTMLElement).classList.add('active');
+
+        if (this.crowd) {
+          this.crowd.setCrowdCount(count);
+          this.crowdCountDisplay.textContent = `${count.toLocaleString()} Players`;
+        }
+      });
+    });
+  }
+
   private buildControlsHint(): void {
     const hints = document.createElement('div');
     hints.id = 'controls-hint';
@@ -111,7 +168,6 @@ export class HUD {
     `;
     this.container.appendChild(hints);
 
-    // Fade out hint after user starts moving
     let hasMoved = false;
     const checkMove = () => {
       if (Math.abs(this.input.state.moveX) > 0.1 || Math.abs(this.input.state.moveZ) > 0.1) {
@@ -128,7 +184,6 @@ export class HUD {
   }
 
   private buildMobileTouchOverlay(): void {
-    // 1. Virtual Joystick elements
     const joyContainer = document.createElement('div');
     joyContainer.id = 'virtual-joystick-container';
     joyContainer.innerHTML = `<div id="virtual-joystick-knob"></div>`;
@@ -137,7 +192,6 @@ export class HUD {
     const knob = joyContainer.querySelector('#virtual-joystick-knob') as HTMLElement;
     this.input.setJoystickElements(joyContainer, knob);
 
-    // 2. Sprint Button for Mobile
     const sprintBtn = document.createElement('button');
     sprintBtn.id = 'mobile-sprint-btn';
     sprintBtn.className = 'ui-interactive';
@@ -160,8 +214,26 @@ export class HUD {
   }
 
   public update(): void {
+    this.updateFps();
     this.updateLocation();
     this.drawMinimap();
+  }
+
+  private updateFps(): void {
+    this.frameCount++;
+    const now = performance.now();
+    const elapsed = now - this.lastFpsTime;
+
+    if (elapsed >= 500) {
+      this.currentFps = Math.round((this.frameCount * 1000) / elapsed);
+      this.frameCount = 0;
+      this.lastFpsTime = now;
+
+      if (this.fpsDisplay) {
+        this.fpsDisplay.textContent = `${this.currentFps} FPS`;
+        this.fpsDisplay.className = `stat-val ${this.currentFps >= 50 ? 'fps-good' : this.currentFps >= 35 ? 'fps-warn' : 'fps-bad'}`;
+      }
+    }
   }
 
   private updateLocation(): void {
@@ -187,9 +259,8 @@ export class HUD {
       const el = document.getElementById('location-name');
       if (el) {
         el.textContent = this.currentLocation;
-        // Pulse effect
         this.locationBanner.classList.remove('pulse');
-        void this.locationBanner.offsetWidth; // re-flow
+        void this.locationBanner.offsetWidth;
         this.locationBanner.classList.add('pulse');
       }
     }
@@ -201,13 +272,11 @@ export class HUD {
     const height = this.minimapCanvas.height;
     const centerX = width / 2;
     const centerY = height / 2;
-    const scale = 1.0; // 1 meter = 1 pixel on radar
+    const scale = 1.0;
 
-    // Clear background
     ctx.fillStyle = '#1e241d';
     ctx.fillRect(0, 0, width, height);
 
-    // Draw circular parchment border clip
     ctx.save();
     ctx.beginPath();
     ctx.arc(centerX, centerY, width / 2 - 4, 0, Math.PI * 2);
@@ -216,30 +285,26 @@ export class HUD {
     ctx.fillStyle = '#2c3b28';
     ctx.fill();
 
-    // Map offset relative to player
     const px = this.player.position.x;
     const pz = this.player.position.z;
 
-    // Draw Roads (Cross streets & plaza)
-    ctx.fillStyle = '#655e56';
-    // Central Plaza circle
+    // Roads
+    ctx.fillStyle = '#7a7065';
     const plazaX = centerX + (0 - px) * scale;
     const plazaY = centerY + (0 - pz) * scale;
     ctx.beginPath();
     ctx.arc(plazaX, plazaY, 24 * scale, 0, Math.PI * 2);
     ctx.fill();
 
-    // Main Street N-S
     const roadNSX = centerX + (0 - px) * scale;
     ctx.fillRect(roadNSX - 4 * scale, centerY + (-65 - pz) * scale, 8 * scale, 130 * scale);
 
-    // Main Street E-W
     const roadEWY = centerY + (0 - pz) * scale;
     ctx.fillRect(centerX + (-65 - px) * scale, roadEWY - 4 * scale, 130 * scale, 8 * scale);
 
-    // Draw Buildings
-    ctx.fillStyle = '#8b4513';
-    ctx.strokeStyle = '#4a250b';
+    // Buildings
+    ctx.fillStyle = '#8a4b2a';
+    ctx.strokeStyle = '#4e2815';
     ctx.lineWidth = 1;
 
     for (const box of this.townMap.collisionBoxes) {
@@ -251,7 +316,7 @@ export class HUD {
       ctx.strokeRect(bx, by, bw, bh);
     }
 
-    // Draw Landmarks
+    // Landmarks
     for (const lm of this.townMap.landmarks) {
       const lx = centerX + (lm.x - px) * scale;
       const ly = centerY + (lm.z - pz) * scale;
@@ -262,13 +327,12 @@ export class HUD {
       ctx.fill();
     }
 
-    // Draw Player Indicator (Center)
+    // Player
     ctx.fillStyle = '#00e5ff';
     ctx.beginPath();
     ctx.arc(centerX, centerY, 4.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // Player Heading Cone
     const facingAngle = this.player.mesh.rotation.y;
     const coneLen = 11;
     ctx.strokeStyle = '#ffffff';
