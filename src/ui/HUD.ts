@@ -3,6 +3,7 @@ import { CharacterController } from '../character/CharacterController';
 import { InputManager } from '../character/InputManager';
 import { PlayerCrowd } from '../character/PlayerCrowd';
 import { DepthOfFieldPass } from '../core/DepthOfFieldPass';
+import { MultiplayerManager } from '../multiplayer/MultiplayerManager';
 
 export class HUD {
   private container: HTMLElement;
@@ -16,15 +17,21 @@ export class HUD {
   // RO1 Classic Basic Info Window
   private fpsDisplay!: HTMLElement;
   private crowdCountDisplay!: HTMLElement;
+  private mpStatusDisplay!: HTMLElement;
   private frameCount: number = 0;
   private lastFpsTime: number = performance.now();
   private currentFps: number = 60;
+
+  // RO1 Classic Chat Box
+  private chatMessagesEl!: HTMLElement;
+  private chatInputEl!: HTMLInputElement;
 
   private townMap: TownMap;
   private player: CharacterController;
   private input: InputManager;
   private crowd?: PlayerCrowd;
   private dofPass?: DepthOfFieldPass;
+  private multiplayer?: MultiplayerManager;
 
   private currentLocation: string = 'Prontera Central Fountain';
 
@@ -33,13 +40,15 @@ export class HUD {
     player: CharacterController,
     input: InputManager,
     crowd?: PlayerCrowd,
-    dofPass?: DepthOfFieldPass
+    dofPass?: DepthOfFieldPass,
+    multiplayer?: MultiplayerManager
   ) {
     this.townMap = townMap;
     this.player = player;
     this.input = input;
     this.crowd = crowd;
     this.dofPass = dofPass;
+    this.multiplayer = multiplayer;
 
     this.container = document.createElement('div');
     this.container.id = 'hud-container';
@@ -49,8 +58,10 @@ export class HUD {
     this.buildTopBanner();
     this.buildMinimap();
     this.buildRO1BasicInfoWindow();
+    this.buildRO1ChatBox();
     this.buildRO1ActionHotbar();
     this.buildControlsHint();
+    this.setupMultiplayerListeners();
   }
 
   private buildLoadingScreen(): void {
@@ -154,11 +165,15 @@ export class HUD {
           </div>
         </div>
 
-        <!-- Live Server Status -->
+        <!-- Live Server Status & Real-time Multiplayer -->
         <div class="ro-server-status">
           <div class="ro-status-row">
             <span class="ro-dot"></span>
             <span class="ro-status-text">Server: Prontera 01</span>
+          </div>
+          <div class="ro-status-row">
+            <span class="ro-dot online-dot" id="mp-dot"></span>
+            <span id="mp-status" class="ro-status-text">Multiplayer: Online (1)</span>
           </div>
           <div class="ro-stats-row">
             <span id="fps-value" class="ro-fps">75 FPS</span>
@@ -178,6 +193,7 @@ export class HUD {
 
     this.fpsDisplay = roWindow.querySelector('#fps-value')!;
     this.crowdCountDisplay = roWindow.querySelector('#crowd-value')!;
+    this.mpStatusDisplay = roWindow.querySelector('#mp-status')!;
 
     const btns = roWindow.querySelectorAll('.preset-btn');
     btns.forEach((btn) => {
@@ -192,6 +208,86 @@ export class HUD {
         }
       });
     });
+  }
+
+  /**
+   * Classic Ragnarok Online 1 In-Game Chat Box
+   * Displays server notices, player chat, and sends overhead speech bubbles
+   */
+  private buildRO1ChatBox(): void {
+    const chatBox = document.createElement('div');
+    chatBox.id = 'ro-chat-box';
+    chatBox.className = 'ui-interactive';
+    chatBox.innerHTML = `
+      <div id="ro-chat-messages" class="ro-chat-messages">
+        <div class="chat-msg system">⚔️ Welcome to Ragnarok Online Prontera Square!</div>
+        <div class="chat-msg system">💬 Type below or press Enter to chat with connected players.</div>
+      </div>
+      <form id="ro-chat-form" class="ro-chat-form">
+        <span class="chat-tag">[All]</span>
+        <input id="ro-chat-input" class="ro-chat-input" type="text" placeholder="Press Enter to chat..." maxlength="80" autocomplete="off" />
+        <button type="submit" class="ro-chat-send">Send</button>
+      </form>
+    `;
+    this.container.appendChild(chatBox);
+
+    this.chatMessagesEl = chatBox.querySelector('#ro-chat-messages')!;
+    this.chatInputEl = chatBox.querySelector('#ro-chat-input')!;
+    const form = chatBox.querySelector('#ro-chat-form') as HTMLFormElement;
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const val = this.chatInputEl.value.trim();
+      if (!val) return;
+      this.chatInputEl.value = '';
+      this.chatInputEl.blur();
+
+      // 1. Show speech bubble over local character
+      this.player.showChat(val);
+
+      // 2. Append to chat box
+      this.appendChatMessage(this.multiplayer?.localName || 'You', val, true);
+
+      // 3. Broadcast to all connected multiplayer peers
+      if (this.multiplayer) {
+        this.multiplayer.sendChat(val);
+      }
+    });
+
+    // Keyboard shortcut: Press Enter to focus chat input
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && document.activeElement !== this.chatInputEl) {
+        e.preventDefault();
+        this.chatInputEl.focus();
+      }
+    });
+  }
+
+  public appendChatMessage(sender: string, text: string, isSelf: boolean = false): void {
+    if (!this.chatMessagesEl) return;
+    const msgEl = document.createElement('div');
+    msgEl.className = `chat-msg ${isSelf ? 'self' : 'player'}`;
+    msgEl.innerHTML = `<span class="sender">&lt;${sender}&gt;:</span> <span class="content">${text}</span>`;
+    this.chatMessagesEl.appendChild(msgEl);
+    this.chatMessagesEl.scrollTop = this.chatMessagesEl.scrollHeight;
+  }
+
+  private setupMultiplayerListeners(): void {
+    if (!this.multiplayer) return;
+
+    this.multiplayer.onConnectionChange = (connected: boolean, count: number) => {
+      if (this.mpStatusDisplay) {
+        if (connected) {
+          this.mpStatusDisplay.textContent = `Multiplayer: ${count} Online`;
+        } else {
+          this.mpStatusDisplay.textContent = `Multiplayer: Connecting...`;
+        }
+      }
+    };
+
+    this.multiplayer.onChatMessage = (senderName: string, text: string) => {
+      this.appendChatMessage(senderName, text, false);
+    };
   }
 
   /**
@@ -218,6 +314,10 @@ export class HUD {
     const emoteBtn = hotbar.querySelector('#ro-btn-emote')!;
     emoteBtn.addEventListener('click', () => {
       this.showFloatingEmote('♥');
+      this.player.showEmote('♥');
+      if (this.multiplayer) {
+        this.multiplayer.sendEmote('♥');
+      }
     });
 
     const dofBtn = hotbar.querySelector('#ro-btn-dof')!;

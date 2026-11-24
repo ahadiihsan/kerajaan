@@ -9,10 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "three": "^0.174.0"
+    "three": "^0.174.0",
+    "ws": "^8.23.0"
   },
   "devDependencies": {
     "@types/three": "^0.174.0",
+    "@types/ws": "^8.18.2",
     "typescript": "^5.7.3",
     "vite": "^6.2.0"
   }

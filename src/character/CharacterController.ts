@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Updatable } from '../core/Engine';
 import { InputManager } from './InputManager';
 import { TownMap } from '../map/TownMap';
-import { PixelSpriteSheet, SpriteDirection, CharacterLayerTextures } from './PixelSpriteSheet';
+import { ROCharacterAtlas } from './ROCharacterAtlas';
 
 export class CharacterController implements Updatable {
   public mesh: THREE.Group;
@@ -10,18 +10,20 @@ export class CharacterController implements Updatable {
   private input: InputManager;
   private townMap: TownMap;
 
-  // 2.5D Multi-Layered Volumetric Relief Avatar
+  // Ragnarok Online Official Sprite Mesh (Arch Bishop + Blue Hair)
   private spriteGroup!: THREE.Group;
-  private backMesh!: THREE.Mesh;
-  private midMesh!: THREE.Mesh;
-  private frontMesh!: THREE.Mesh;
-
-  private backMaterial!: THREE.MeshStandardMaterial;
-  private midMaterial!: THREE.MeshStandardMaterial;
-  private frontMaterial!: THREE.MeshStandardMaterial;
+  private spriteMesh!: THREE.Mesh;
+  private spriteMaterial!: THREE.MeshStandardMaterial;
 
   private shadowDisc!: THREE.Mesh;
   private nametagSprite!: THREE.Sprite;
+
+  // Floating Overhead Speech / Emote Bubble
+  private bubbleCanvas!: HTMLCanvasElement;
+  private bubbleCtx!: CanvasRenderingContext2D;
+  private bubbleTex!: THREE.CanvasTexture;
+  private bubbleSprite!: THREE.Sprite;
+  private bubbleTimer: number = 0;
 
   // RO1 Click Ground Target Ripple
   private rippleMesh!: THREE.Mesh;
@@ -32,10 +34,10 @@ export class CharacterController implements Updatable {
   private targetDestination: THREE.Vector3 | null = null;
   public isSitting: boolean = false;
 
-  private direction: SpriteDirection = 'down';
-  private frameIndex: number = 0;
+  public dir8Index: number = 0;
+  public frameIndex: number = 0;
   private animTimer: number = 0;
-  private isMoving: boolean = false;
+  public isMoving: boolean = false;
 
   public walkSpeed: number = 5.4;
   public runSpeed: number = 8.5;
@@ -56,8 +58,69 @@ export class CharacterController implements Updatable {
     this.mesh.name = 'RO1VolumetricPlayer';
     this.build2Point5DVolumetricAvatar();
     this.buildFloatingNametag();
+    this.buildSpeechBubble();
     this.buildClickTargetRipple();
     this.mesh.position.copy(this.position);
+  }
+
+  private buildSpeechBubble(): void {
+    this.bubbleCanvas = document.createElement('canvas');
+    this.bubbleCanvas.width = 256;
+    this.bubbleCanvas.height = 96;
+    this.bubbleCtx = this.bubbleCanvas.getContext('2d')!;
+    this.bubbleTex = new THREE.CanvasTexture(this.bubbleCanvas);
+    this.bubbleTex.colorSpace = THREE.SRGBColorSpace;
+    const bubbleMat = new THREE.SpriteMaterial({ map: this.bubbleTex, transparent: true, opacity: 0 });
+    this.bubbleSprite = new THREE.Sprite(bubbleMat);
+    this.bubbleSprite.scale.set(3.2, 1.2, 1);
+    this.bubbleSprite.position.set(0, 3.5, 0);
+    this.mesh.add(this.bubbleSprite);
+  }
+
+  public showEmote(symbol: string): void {
+    this.renderBubble(symbol, true);
+  }
+
+  public showChat(text: string): void {
+    this.renderBubble(text, false);
+  }
+
+  private renderBubble(text: string, isEmote: boolean): void {
+    const ctx = this.bubbleCtx;
+    ctx.clearRect(0, 0, 256, 96);
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.strokeStyle = '#2f3542';
+    ctx.lineWidth = 2.5;
+
+    ctx.beginPath();
+    ctx.roundRect(12, 10, 232, 58, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(120, 68);
+    ctx.lineTo(128, 82);
+    ctx.lineTo(136, 68);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.fill();
+    ctx.stroke();
+
+    if (isEmote) {
+      ctx.font = '36px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, 128, 52);
+    } else {
+      ctx.font = 'bold 15px sans-serif';
+      ctx.fillStyle = '#1e272e';
+      ctx.textAlign = 'center';
+      ctx.fillText(text.length > 22 ? text.substring(0, 20) + '...' : text, 128, 44);
+    }
+
+    this.bubbleTex.needsUpdate = true;
+    this.bubbleSprite.material.opacity = 1.0;
+    this.bubbleTimer = isEmote ? 3.0 : 5.0;
   }
 
   /**
@@ -96,8 +159,8 @@ export class CharacterController implements Updatable {
     this.spriteGroup.rotation.x = 0;
     this.mesh.add(this.spriteGroup);
 
-    // Geometry for 2.5D layers (anchored at feet, standing vertical)
-    const layerGeo = new THREE.PlaneGeometry(1.75, 2.4);
+    // Official Ragnarok Online Sprite Quad (Anchored at feet, standing vertical)
+    const layerGeo = new THREE.PlaneGeometry(1.6, 2.4);
     layerGeo.translate(0, 1.2, 0);
 
     // Set vertex normals facing slightly upward and forward to catch warm sunlight
@@ -107,40 +170,21 @@ export class CharacterController implements Updatable {
     }
     normals.needsUpdate = true;
 
-    const initialLayers: CharacterLayerTextures = PixelSpriteSheet.getLayers('down', 0);
+    const initialTex = ROCharacterAtlas.getTexture(0, 0);
+    this.spriteMaterial = new THREE.MeshStandardMaterial({
+      map: initialTex,
+      emissiveMap: initialTex,
+      emissive: new THREE.Color(0xa0a0a0),
+      emissiveIntensity: 0.65,
+      roughness: 0.55,
+      metalness: 0.15,
+      transparent: true,
+      alphaTest: 0.15,
+      side: THREE.DoubleSide
+    });
 
-    // Standard material helper with vivid self-illumination base + dynamic sunlight response
-    const createMat = (map: THREE.Texture) => {
-      return new THREE.MeshStandardMaterial({
-        map: map,
-        emissiveMap: map,
-        emissive: new THREE.Color(0xa5a5a5),
-        emissiveIntensity: 0.65,
-        roughness: 0.5,
-        metalness: 0.15,
-        transparent: true,
-        alphaTest: 0.12,
-        side: THREE.DoubleSide
-      });
-    };
-
-    // Layer 1: Back (Cape & Scabbard at Z = -0.10)
-    this.backMaterial = createMat(initialLayers.back);
-    this.backMesh = new THREE.Mesh(layerGeo, this.backMaterial);
-    this.backMesh.position.z = -0.10;
-    this.spriteGroup.add(this.backMesh);
-
-    // Layer 2: Mid (Torso, Arms, Boots at Z = 0.0)
-    this.midMaterial = createMat(initialLayers.mid);
-    this.midMesh = new THREE.Mesh(layerGeo, this.midMaterial);
-    this.midMesh.position.z = 0.0;
-    this.spriteGroup.add(this.midMesh);
-
-    // Layer 3: Front (Headband, Face, Pauldrons, Front Sword at Z = +0.10)
-    this.frontMaterial = createMat(initialLayers.front);
-    this.frontMesh = new THREE.Mesh(layerGeo, this.frontMaterial);
-    this.frontMesh.position.z = 0.10;
-    this.spriteGroup.add(this.frontMesh);
+    this.spriteMesh = new THREE.Mesh(layerGeo, this.spriteMaterial);
+    this.spriteGroup.add(this.spriteMesh);
   }
 
   private buildFloatingNametag(): void {
@@ -304,15 +348,18 @@ export class CharacterController implements Updatable {
     let relAngle = this.facingAngle - this.cameraYaw;
     relAngle = ((relAngle + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
 
-    if (Math.abs(relAngle) <= Math.PI * 0.25) {
-      this.direction = 'down'; // Facing toward camera
-    } else if (Math.abs(relAngle) >= Math.PI * 0.75) {
-      this.direction = 'up'; // Facing away from camera (back view)
-    } else if (relAngle > 0) {
-      this.direction = 'right'; // Facing camera right
+    // 8-Directional View Index (0..7) relative to camera orbit yaw
+    this.dir8Index = ROCharacterAtlas.calculateDirection8(this.facingAngle, this.cameraYaw);
+
+    let frame = 0;
+    if (this.isSitting) {
+      frame = 9; // Authentic RO1 Sitting Pose
+    } else if (this.isMoving) {
+      frame = 1 + (Math.floor(this.animTimer) % 8); // 8-beat walk cycle
     } else {
-      this.direction = 'left'; // Facing camera left
+      frame = 0; // Standing Idle
     }
+    this.frameIndex = frame;
 
     // Authentic Ragnarok Online Cylindrical Billboarding:
     // Sprite quad stands vertically upright and turns around Y to face camera orbit
@@ -320,22 +367,25 @@ export class CharacterController implements Updatable {
     this.spriteGroup.rotation.y = this.cameraYaw;
     this.spriteGroup.rotation.x = 0;
 
-    // Update 3-Layer 2.5D Textures
-    const newLayers = PixelSpriteSheet.getLayers(this.direction, this.frameIndex);
-    if (this.backMaterial.map !== newLayers.back) {
-      this.backMaterial.map = newLayers.back;
-      this.backMaterial.needsUpdate = true;
-    }
-    if (this.midMaterial.map !== newLayers.mid) {
-      this.midMaterial.map = newLayers.mid;
-      this.midMaterial.needsUpdate = true;
-    }
-    if (this.frontMaterial.map !== newLayers.front) {
-      this.frontMaterial.map = newLayers.front;
-      this.frontMaterial.needsUpdate = true;
+    // Update texture from official RO Arch Bishop + Blue Head Atlas
+    const newTex = ROCharacterAtlas.getTexture(this.dir8Index, this.frameIndex);
+    if (this.spriteMaterial.map !== newTex) {
+      this.spriteMaterial.map = newTex;
+      this.spriteMaterial.emissiveMap = newTex;
+      this.spriteMaterial.needsUpdate = true;
     }
 
     this.mesh.position.copy(this.position);
+
+    // Update speech bubble timer
+    if (this.bubbleTimer > 0) {
+      this.bubbleTimer -= delta;
+      if (this.bubbleTimer <= 0) {
+        this.bubbleSprite.material.opacity = 0;
+      } else if (this.bubbleTimer < 0.5) {
+        this.bubbleSprite.material.opacity = this.bubbleTimer / 0.5;
+      }
+    }
 
     // Update RO1 Camera
     this.updateCamera(delta);
