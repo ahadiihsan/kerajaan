@@ -5,58 +5,60 @@ export class Environment {
   public dirLight!: THREE.DirectionalLight;
   public hemiLight!: THREE.HemisphereLight;
   public groundMesh!: THREE.Mesh;
+  public lanterns: THREE.PointLight[] = [];
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.setupLighting();
     this.setupSkyAndFog();
     this.setupTerrain();
+    this.setupStreetLanterns();
   }
 
   private setupLighting(): void {
-    // 1. Soft Hemisphere Ambient (Warm sky + earth bounce)
-    this.hemiLight = new THREE.HemisphereLight(0xdeeeff, 0x5a4533, 1.05);
+    // 1. Soft Atmospheric Hemisphere Sky & Earth
+    this.hemiLight = new THREE.HemisphereLight(0xd4e7f8, 0x483525, 1.1);
     this.hemiLight.position.set(0, 50, 0);
     this.scene.add(this.hemiLight);
 
-    // 2. Warm Directional Sunlight
-    this.dirLight = new THREE.DirectionalLight(0xfff3dc, 2.2);
-    this.dirLight.position.set(55, 85, 48);
+    // 2. Cinematic Golden Sun Directional Light
+    this.dirLight = new THREE.DirectionalLight(0xffedd2, 2.2);
+    this.dirLight.position.set(45, 75, 40);
     this.dirLight.castShadow = true;
 
-    // Mobile-friendly shadow map
     this.dirLight.shadow.mapSize.width = 1024;
     this.dirLight.shadow.mapSize.height = 1024;
     this.dirLight.shadow.camera.near = 10;
-    this.dirLight.shadow.camera.far = 240;
+    this.dirLight.shadow.camera.far = 220;
 
-    const d = 85;
+    const d = 65;
     this.dirLight.shadow.camera.left = -d;
     this.dirLight.shadow.camera.right = d;
     this.dirLight.shadow.camera.top = d;
     this.dirLight.shadow.camera.bottom = -d;
 
     this.dirLight.shadow.bias = -0.0003;
-    this.dirLight.shadow.normalBias = 0.035;
+    this.dirLight.shadow.normalBias = 0.03;
 
     this.scene.add(this.dirLight);
     this.scene.add(this.dirLight.target);
   }
 
   private setupSkyAndFog(): void {
-    const fogColor = new THREE.Color(0xbdd6e8);
+    // Octopath-style cinematic soft horizon haze
+    const fogColor = new THREE.Color(0xaecae0);
     this.scene.background = fogColor;
-    this.scene.fog = new THREE.FogExp2(fogColor.getHex(), 0.0065);
+    this.scene.fog = new THREE.FogExp2(fogColor.getHex(), 0.0075);
 
-    // Atmospheric warm sky dome
-    const skyGeo = new THREE.SphereGeometry(380, 24, 16);
+    // Atmospheric sky dome
+    const skyGeo = new THREE.SphereGeometry(350, 24, 16);
     const skyMat = new THREE.ShaderMaterial({
       side: THREE.BackSide,
       depthWrite: false,
       uniforms: {
-        topColor: { value: new THREE.Color(0x32618d) },
-        horizonColor: { value: new THREE.Color(0xbdd6e8) },
-        sunPosition: { value: new THREE.Vector3(55, 85, 48).normalize() },
+        topColor: { value: new THREE.Color(0x285177) },
+        horizonColor: { value: new THREE.Color(0xaecae0) },
+        sunPosition: { value: new THREE.Vector3(45, 75, 40).normalize() },
       },
       vertexShader: `
         varying vec3 vWorldPosition;
@@ -76,7 +78,7 @@ export class Environment {
           float h = max(0.0, dir.y);
           vec3 sky = mix(horizonColor, topColor, pow(h, 0.6));
           float sunGlow = max(0.0, dot(dir, sunPosition));
-          sky += vec3(1.0, 0.94, 0.8) * pow(sunGlow, 24.0) * 0.45;
+          sky += vec3(1.0, 0.92, 0.75) * pow(sunGlow, 24.0) * 0.4;
           gl_FragColor = vec4(sky, 1.0);
         }
       `
@@ -87,7 +89,7 @@ export class Environment {
   }
 
   private setupTerrain(): void {
-    const size = 320;
+    const size = 260;
     const segments = 64;
     const geo = new THREE.PlaneGeometry(size, size, segments, segments);
     geo.rotateX(-Math.PI / 2);
@@ -98,10 +100,10 @@ export class Environment {
       const z = pos.getZ(i);
       const distFromCenter = Math.sqrt(x * x + z * z);
 
-      if (distFromCenter > 60) {
-        const factor = Math.min(1.0, (distFromCenter - 60) / 75);
-        const hill = (Math.sin(x * 0.04) * Math.cos(z * 0.04) * 5.0 +
-                      Math.sin(x * 0.02 + 1.0) * 7.0) * factor;
+      if (distFromCenter > 50) {
+        const factor = Math.min(1.0, (distFromCenter - 50) / 60);
+        const hill = (Math.sin(x * 0.05) * Math.cos(z * 0.05) * 4.0 +
+                      Math.sin(x * 0.02 + 0.8) * 6.0) * factor;
         pos.setY(i, Math.max(0, hill));
       } else {
         pos.setY(i, 0);
@@ -109,15 +111,15 @@ export class Environment {
     }
     geo.computeVertexNormals();
 
-    // Natural weathered cobblestone, rich meadow grass, and warm loam pathways
+    // Diorama ground: Warm stone cobblestones, wooden bridges, and meadow grass
     const terrainMat = new THREE.ShaderMaterial({
       uniforms: {
-        grassColor: { value: new THREE.Color(0x50793a) },
-        grassDarkColor: { value: new THREE.Color(0x385726) },
-        dirtColor: { value: new THREE.Color(0x75604b) },
-        stoneColor: { value: new THREE.Color(0x9a9184) },
-        stoneDarkColor: { value: new THREE.Color(0x7e7568) },
-        mortarColor: { value: new THREE.Color(0x5a5146) },
+        grassColor: { value: new THREE.Color(0x4a7436) },
+        grassDarkColor: { value: new THREE.Color(0x355424) },
+        dirtColor: { value: new THREE.Color(0x735c46) },
+        stoneColor: { value: new THREE.Color(0x9a8f82) },
+        stoneDarkColor: { value: new THREE.Color(0x786e62) },
+        mortarColor: { value: new THREE.Color(0x564d43) },
       },
       vertexShader: `
         varying vec3 vWorldPos;
@@ -154,18 +156,18 @@ export class Environment {
           vec2 xz = vWorldPos.xz;
           float dist = length(xz);
 
-          // Organic meadow grass with gentle noise
-          float gn = noise(xz * 0.22) * 0.7 + noise(xz * 0.5) * 0.3;
+          // Meadow grass
+          float gn = noise(xz * 0.25) * 0.7 + noise(xz * 0.55) * 0.3;
           vec3 grass = mix(grassDarkColor, grassColor, gn);
 
-          // Central Plaza & Main thoroughfares
-          float inPlaza = smoothstep(25.0, 21.0, dist);
-          float streetNS = smoothstep(5.0, 3.5, abs(xz.x)) * smoothstep(68.0, 18.0, abs(xz.y));
-          float streetEW = smoothstep(4.5, 3.2, abs(xz.y)) * smoothstep(65.0, 18.0, abs(xz.x));
+          // Central Plaza & Main streets
+          float inPlaza = smoothstep(23.0, 19.0, dist);
+          float streetNS = smoothstep(4.8, 3.2, abs(xz.x)) * smoothstep(58.0, 16.0, abs(xz.y));
+          float streetEW = smoothstep(4.2, 3.0, abs(xz.y)) * smoothstep(55.0, 16.0, abs(xz.x));
           float roadFactor = max(inPlaza, max(streetNS, streetEW));
 
-          // Natural weathered cobblestone masonry pattern
-          vec2 uvP = xz * 0.75;
+          // Cobblestones
+          vec2 uvP = xz * 0.85;
           if (mod(floor(uvP.y), 2.0) > 0.5) {
             uvP.x += 0.5;
           }
@@ -173,21 +175,19 @@ export class Environment {
           vec2 tileUv = fract(uvP) - 0.5;
 
           float stoneVariation = hash(tileId);
-          vec3 paver = mix(stoneColor, stoneDarkColor, stoneVariation * 0.65);
+          vec3 paver = mix(stoneColor, stoneDarkColor, stoneVariation * 0.6);
 
-          // Soft mortar lines between pavers
           float edge = max(abs(tileUv.x), abs(tileUv.y));
           float mortarGap = smoothstep(0.38, 0.48, edge);
           vec3 cobble = mix(paver, mortarColor, mortarGap);
 
-          // Warm dirt border blending into grass
-          float dirtBorder = smoothstep(6.5, 4.2, abs(xz.x)) * 0.45 + smoothstep(6.0, 3.8, abs(xz.y)) * 0.45;
+          // Soft dirt borders
+          float dirtBorder = smoothstep(6.0, 3.8, abs(xz.x)) * 0.4 + smoothstep(5.5, 3.4, abs(xz.y)) * 0.4;
           vec3 streetBlend = mix(dirtColor, cobble, roadFactor);
 
-          vec3 finalColor = mix(grass, streetBlend, clamp(roadFactor + dirtBorder * 0.65, 0.0, 1.0));
+          vec3 finalColor = mix(grass, streetBlend, clamp(roadFactor + dirtBorder * 0.6, 0.0, 1.0));
 
-          // Soft directional sunlight calculation
-          vec3 sunDir = normalize(vec3(55.0, 85.0, 48.0));
+          vec3 sunDir = normalize(vec3(45.0, 75.0, 40.0));
           float diff = max(0.3, dot(vNormal, sunDir));
           gl_FragColor = vec4(finalColor * (diff * 0.75 + 0.35), 1.0);
         }
@@ -197,5 +197,26 @@ export class Environment {
     this.groundMesh = new THREE.Mesh(geo, terrainMat);
     this.groundMesh.receiveShadow = true;
     this.scene.add(this.groundMesh);
+  }
+
+  private setupStreetLanterns(): void {
+    // Warm atmospheric point lights (The signature Octopath traveler lantern glow)
+    const lanternCoords = [
+      { x: -6, z: -6 },
+      { x: 6, z: -6 },
+      { x: -6, z: 6 },
+      { x: 6, z: 6 },
+      { x: -16, z: 0 },
+      { x: 16, z: 0 },
+      { x: 0, z: -18 },
+      { x: 0, z: 22 },
+    ];
+
+    lanternCoords.forEach((coord) => {
+      const light = new THREE.PointLight(0xffa638, 2.5, 14);
+      light.position.set(coord.x, 2.2, coord.z);
+      this.scene.add(light);
+      this.lanterns.push(light);
+    });
   }
 }

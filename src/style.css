@@ -24,6 +24,18 @@ html, body {
   z-index: 1;
 }
 
+/* ==========================================================================
+   Octopath Traveler HD-2D Tilt-Shift & Vignette Lens
+   ========================================================================== */
+#tilt-shift-lens {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.55);
+  background: radial-gradient(circle at center, transparent 50%, rgba(12, 16, 22, 0.38) 100%);
+}
+
 #hud-container {
   position: absolute;
   top: 0;

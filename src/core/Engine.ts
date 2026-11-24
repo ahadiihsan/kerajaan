@@ -23,13 +23,14 @@ export class Engine {
     // 1. Scene
     this.scene = new THREE.Scene();
 
-    // 2. Camera
+    // 2. HD-2D Diorama Camera (Narrow FOV 38 deg for isometric miniature depth)
     const width = this.container.clientWidth || window.innerWidth;
     const height = this.container.clientHeight || window.innerHeight;
-    this.camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 800);
-    this.camera.position.set(0, 15, 30);
+    this.camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 500);
+    this.camera.position.set(0, 16, 24);
+    this.camera.lookAt(0, 1.2, 0);
 
-    // 3. Renderer
+    // 3. WebGL Renderer with High-End Lighting & ACES Filmic Tone Mapping
     this.renderer = new THREE.WebGLRenderer({
       powerPreference: 'high-performance',
       antialias: true,
@@ -39,7 +40,7 @@ export class Engine {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.15;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
