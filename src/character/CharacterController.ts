@@ -57,6 +57,7 @@ export class CharacterController implements Updatable {
     this.mesh = new THREE.Group();
     this.mesh.name = 'RO1VolumetricPlayer';
     this.build2Point5DVolumetricAvatar();
+    this.buildUnderFeetBattleGauge();
     this.buildFloatingNametag();
     this.buildSpeechBubble();
     this.buildClickTargetRipple();
@@ -224,11 +225,91 @@ export class CharacterController implements Updatable {
     this.mesh.add(this.nametagSprite);
   }
 
+  private battleGaugeMesh!: THREE.Mesh;
+  private buildUnderFeetBattleGauge(): void {
+    const hpCanvas = document.createElement('canvas');
+    hpCanvas.width = 64;
+    hpCanvas.height = 12;
+    const hpCtx = hpCanvas.getContext('2d')!;
+
+    // Dark outer border
+    hpCtx.fillStyle = '#0f141d';
+    hpCtx.fillRect(0, 0, 64, 12);
+    // Cyan inner fill (RO1 classic battle gauge)
+    hpCtx.fillStyle = '#00d2d3';
+    hpCtx.fillRect(2, 2, 60, 8);
+    // Highlight reflection
+    hpCtx.fillStyle = '#7efff5';
+    hpCtx.fillRect(2, 2, 60, 2);
+
+    const hpTex = new THREE.CanvasTexture(hpCanvas);
+    hpTex.magFilter = THREE.NearestFilter;
+    const hpGeo = new THREE.PlaneGeometry(0.85, 0.16);
+    const hpMat = new THREE.MeshBasicMaterial({
+      map: hpTex,
+      transparent: true,
+      depthTest: true,
+      side: THREE.DoubleSide
+    });
+    this.battleGaugeMesh = new THREE.Mesh(hpGeo, hpMat);
+    this.battleGaugeMesh.position.set(0, 0.08, 0.05);
+    this.spriteGroup.add(this.battleGaugeMesh);
+  }
+
   private buildClickTargetRipple(): void {
-    const geo = new THREE.RingGeometry(0.3, 0.45, 24);
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d')!;
+
+    // Draw authentic RO1 green corner brackets
+    ctx.strokeStyle = '#2ed573';
+    ctx.lineWidth = 8;
+    ctx.lineCap = 'square';
+
+    const s = 128;
+    const pad = 16;
+    const len = 32;
+
+    // Top-Left ┌
+    ctx.beginPath();
+    ctx.moveTo(pad, pad + len);
+    ctx.lineTo(pad, pad);
+    ctx.lineTo(pad + len, pad);
+    ctx.stroke();
+
+    // Top-Right ┐
+    ctx.beginPath();
+    ctx.moveTo(s - pad - len, pad);
+    ctx.lineTo(s - pad, pad);
+    ctx.lineTo(s - pad, pad + len);
+    ctx.stroke();
+
+    // Bottom-Left └
+    ctx.beginPath();
+    ctx.moveTo(pad, s - pad - len);
+    ctx.lineTo(pad, s - pad);
+    ctx.lineTo(pad + len, s - pad);
+    ctx.stroke();
+
+    // Bottom-Right ┘
+    ctx.beginPath();
+    ctx.moveTo(s - pad - len, s - pad);
+    ctx.lineTo(s - pad, s - pad);
+    ctx.lineTo(s - pad, s - pad - len);
+    ctx.stroke();
+
+    // Center crosshair
+    ctx.fillStyle = '#7bed9f';
+    ctx.fillRect(s / 2 - 4, s / 2 - 4, 8, 8);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.magFilter = THREE.NearestFilter;
+
+    const geo = new THREE.PlaneGeometry(1.4, 1.4);
     geo.rotateX(-Math.PI / 2);
     this.rippleMaterial = new THREE.MeshBasicMaterial({
-      color: 0x2ed573,
+      map: tex,
       transparent: true,
       opacity: 0,
       side: THREE.DoubleSide,
@@ -266,7 +347,7 @@ export class CharacterController implements Updatable {
       this.isSitting = false;
 
       this.rippleMesh.position.set(this.targetDestination.x, 0.04, this.targetDestination.z);
-      this.rippleMesh.scale.set(0.6, 0.6, 0.6);
+      this.rippleMesh.scale.set(1.3, 1.3, 1.3);
       this.rippleMaterial.opacity = 1.0;
       this.rippleTimer = 0.45;
       this.rippleActive = true;
@@ -275,9 +356,10 @@ export class CharacterController implements Updatable {
     if (this.rippleActive) {
       this.rippleTimer -= delta;
       const progress = 1.0 - Math.max(0, this.rippleTimer / 0.45);
-      const s = 0.6 + progress * 0.8;
+      // RO1 corner bracket convergence animation: brackets snap inward onto the cell
+      const s = THREE.MathUtils.lerp(1.3, 0.85, Math.min(1.0, progress * 2));
       this.rippleMesh.scale.set(s, s, s);
-      this.rippleMaterial.opacity = 1.0 - progress;
+      this.rippleMaterial.opacity = 1.0 - progress * 0.65;
       if (this.rippleTimer <= 0) {
         this.rippleActive = false;
         this.rippleMaterial.opacity = 0;

@@ -97,6 +97,31 @@ export class RemotePlayer {
     this.spriteMesh.rotation.order = 'YXZ';
     this.mesh.add(this.spriteMesh);
 
+    // 2.5 Authentic RO1 Under-Feet Battle Gauge
+    const hpCanvas = document.createElement('canvas');
+    hpCanvas.width = 64;
+    hpCanvas.height = 12;
+    const hpCtx = hpCanvas.getContext('2d')!;
+    hpCtx.fillStyle = '#0f141d';
+    hpCtx.fillRect(0, 0, 64, 12);
+    hpCtx.fillStyle = '#00d2d3';
+    hpCtx.fillRect(2, 2, 60, 8);
+    hpCtx.fillStyle = '#7efff5';
+    hpCtx.fillRect(2, 2, 60, 2);
+
+    const hpTex = new THREE.CanvasTexture(hpCanvas);
+    hpTex.magFilter = THREE.NearestFilter;
+    const hpGeo = new THREE.PlaneGeometry(0.85, 0.16);
+    const hpMat = new THREE.MeshBasicMaterial({
+      map: hpTex,
+      transparent: true,
+      depthTest: true,
+      side: THREE.DoubleSide
+    });
+    const battleGauge = new THREE.Mesh(hpGeo, hpMat);
+    battleGauge.position.set(0, 0.08, 0.05);
+    this.spriteMesh.add(battleGauge);
+
     // 3. Floating RO1 Nametag & HP Bar
     this.nametagSprite = this.createNametagSprite(this.name);
     this.nametagSprite.position.set(0, 2.7, 0);

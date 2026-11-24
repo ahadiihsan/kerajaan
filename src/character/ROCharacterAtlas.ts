@@ -88,7 +88,12 @@ export class ROCharacterAtlas {
    * 7: South-East (Front-Right)
    */
   public static calculateDirection8(facingAngle: number, cameraYaw: number): number {
-    let relAngle = facingAngle - cameraYaw;
+    // Relative facing angle in camera space
+    // Since atlas rows 0..7 are clockwise (0:S, 1:SW, 2:W, 3:NW, 4:N, 5:NE, 6:E, 7:SE)
+    // and facingAngle is counter-clockwise (East is +PI/2, West is -PI/2),
+    // relAngle = cameraYaw - facingAngle maps East (+PI/2) to index 6 (East)
+    // and West (-PI/2) to index 2 (West).
+    let relAngle = cameraYaw - facingAngle;
     // Normalize to [0, 2*PI)
     relAngle = (relAngle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
 
