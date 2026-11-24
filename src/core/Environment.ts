@@ -22,8 +22,8 @@ export class Environment {
     this.scene.add(this.hemiLight);
 
     // 2. Cinematic Golden Sun Directional Light
-    this.dirLight = new THREE.DirectionalLight(0xffedd2, 2.2);
-    this.dirLight.position.set(45, 75, 40);
+    this.dirLight = new THREE.DirectionalLight(0xffedd2, 2.0);
+    this.dirLight.position.set(30, 65, 35);
     this.dirLight.castShadow = true;
 
     this.dirLight.shadow.mapSize.width = 1024;
@@ -187,7 +187,7 @@ export class Environment {
 
           vec3 finalColor = mix(grass, streetBlend, clamp(roadFactor + dirtBorder * 0.6, 0.0, 1.0));
 
-          vec3 sunDir = normalize(vec3(45.0, 75.0, 40.0));
+          vec3 sunDir = normalize(vec3(30.0, 65.0, 35.0));
           float diff = max(0.3, dot(vNormal, sunDir));
           gl_FragColor = vec4(finalColor * (diff * 0.75 + 0.35), 1.0);
         }

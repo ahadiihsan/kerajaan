@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Updatable } from '../core/Engine';
 import { InputManager } from './InputManager';
 import { TownMap } from '../map/TownMap';
-import { PixelSpriteSheet, SpriteDirection } from './PixelSpriteSheet';
+import { PixelSpriteSheet, SpriteDirection, CharacterLayerTextures } from './PixelSpriteSheet';
 
 export class CharacterController implements Updatable {
   public mesh: THREE.Group;
@@ -10,38 +10,41 @@ export class CharacterController implements Updatable {
   private input: InputManager;
   private townMap: TownMap;
 
-  // 2D Pixel Sprite Plane
-  private spriteMesh!: THREE.Mesh;
-  private spriteMaterial!: THREE.MeshBasicMaterial;
+  // 2.5D Multi-Layered Volumetric Relief Avatar
+  private spriteGroup!: THREE.Group;
+  private backMesh!: THREE.Mesh;
+  private midMesh!: THREE.Mesh;
+  private frontMesh!: THREE.Mesh;
+
+  private backMaterial!: THREE.MeshStandardMaterial;
+  private midMaterial!: THREE.MeshStandardMaterial;
+  private frontMaterial!: THREE.MeshStandardMaterial;
+
   private shadowDisc!: THREE.Mesh;
   private nametagSprite!: THREE.Sprite;
 
-  // Ground Target Ripple Cursor (Classic RO1 Green Click Circle)
+  // RO1 Click Ground Target Ripple
   private rippleMesh!: THREE.Mesh;
   private rippleMaterial!: THREE.MeshBasicMaterial;
   private rippleTimer: number = 0;
   private rippleActive: boolean = false;
 
-  // RO1 Click-to-Move Target
   private targetDestination: THREE.Vector3 | null = null;
   public isSitting: boolean = false;
 
-  // Direction & Animation Cycle
   private direction: SpriteDirection = 'down';
   private frameIndex: number = 0;
   private animTimer: number = 0;
   private isMoving: boolean = false;
 
-  // Movement parameters
   public walkSpeed: number = 5.4;
   public runSpeed: number = 8.5;
   public position: THREE.Vector3 = new THREE.Vector3(0, 0, 10);
   private currentSpeed: number = 0;
 
-  // Camera Orbit parameters (Classic RO1 Right-Click Rotate)
-  public cameraDistance: number = 18.0;
-  private cameraYaw: number = 0; // Horizontal orbit
-  private cameraPitch: number = 0.62; // ~35.5 degrees elevated isometric
+  public cameraDistance: number = 12.0;
+  private cameraYaw: number = 0;
+  private cameraPitch: number = 0.52;
 
   constructor(camera: THREE.PerspectiveCamera, input: InputManager, townMap: TownMap) {
     this.camera = camera;
@@ -49,42 +52,92 @@ export class CharacterController implements Updatable {
     this.townMap = townMap;
 
     this.mesh = new THREE.Group();
-    this.mesh.name = 'RO1Player';
-    this.buildPixelSprite();
+    this.mesh.name = 'RO1VolumetricPlayer';
+    this.build2Point5DVolumetricAvatar();
     this.buildFloatingNametag();
     this.buildClickTargetRipple();
     this.mesh.position.copy(this.position);
   }
 
-  private buildPixelSprite(): void {
-    // 1. Soft Contact Shadow Disc on Ground
-    const shadowGeo = new THREE.CircleGeometry(0.55, 12);
+  /**
+   * Builds the 2.5D Multi-Layered Relief Avatar with physical thickness,
+   * directional shadow casting, and dynamic PBR lighting.
+   */
+  private build2Point5DVolumetricAvatar(): void {
+    // 1. Soft Ambient Contact Drop-Shadow with Radial Falloff
+    const shadowCanvas = document.createElement('canvas');
+    shadowCanvas.width = 64;
+    shadowCanvas.height = 64;
+    const sCtx = shadowCanvas.getContext('2d')!;
+    const grad = sCtx.createRadialGradient(32, 32, 4, 32, 32, 30);
+    grad.addColorStop(0, 'rgba(15, 12, 10, 0.65)');
+    grad.addColorStop(0.5, 'rgba(15, 12, 10, 0.35)');
+    grad.addColorStop(1, 'rgba(15, 12, 10, 0.0)');
+    sCtx.fillStyle = grad;
+    sCtx.fillRect(0, 0, 64, 64);
+
+    const shadowTex = new THREE.CanvasTexture(shadowCanvas);
+    const shadowGeo = new THREE.PlaneGeometry(1.6, 1.1);
     shadowGeo.rotateX(-Math.PI / 2);
     const shadowMat = new THREE.MeshBasicMaterial({
-      color: 0x120d08,
+      map: shadowTex,
       transparent: true,
-      opacity: 0.45,
       depthWrite: false
     });
     this.shadowDisc = new THREE.Mesh(shadowGeo, shadowMat);
     this.shadowDisc.position.y = 0.03;
     this.mesh.add(this.shadowDisc);
 
-    // 2. 2D Billboard Anime Sprite Quad
-    const spriteGeo = new THREE.PlaneGeometry(1.9, 2.3);
-    spriteGeo.translate(0, 1.15, 0);
+    // 2. Sprite Anchor Group (tilted slightly back to face elevated camera)
+    this.spriteGroup = new THREE.Group();
+    this.spriteGroup.rotation.x = THREE.MathUtils.degToRad(30);
+    this.mesh.add(this.spriteGroup);
 
-    const initialTex = PixelSpriteSheet.getTexture('down', 0);
-    this.spriteMaterial = new THREE.MeshBasicMaterial({
-      map: initialTex,
-      transparent: true,
-      alphaTest: 0.15,
-      side: THREE.DoubleSide
-    });
+    // Geometry for 2.5D layers (anchored at feet)
+    const layerGeo = new THREE.PlaneGeometry(1.85, 2.5);
+    layerGeo.translate(0, 1.25, 0);
 
-    this.spriteMesh = new THREE.Mesh(spriteGeo, this.spriteMaterial);
-    this.spriteMesh.rotation.x = THREE.MathUtils.degToRad(35);
-    this.mesh.add(this.spriteMesh);
+    // Set vertex normals facing slightly upward and forward to catch warm sunlight
+    const normals = layerGeo.attributes.normal;
+    for (let i = 0; i < normals.count; i++) {
+      normals.setXYZ(i, 0, 0.45, 0.89);
+    }
+    normals.needsUpdate = true;
+
+    const initialLayers: CharacterLayerTextures = PixelSpriteSheet.getLayers('down', 0);
+
+    // Standard material helper with vivid self-illumination base + dynamic sunlight response
+    const createMat = (map: THREE.Texture) => {
+      return new THREE.MeshStandardMaterial({
+        map: map,
+        emissiveMap: map,
+        emissive: new THREE.Color(0xa5a5a5),
+        emissiveIntensity: 0.65,
+        roughness: 0.5,
+        metalness: 0.15,
+        transparent: true,
+        alphaTest: 0.12,
+        side: THREE.DoubleSide
+      });
+    };
+
+    // Layer 1: Back (Cape & Scabbard at Z = -0.10)
+    this.backMaterial = createMat(initialLayers.back);
+    this.backMesh = new THREE.Mesh(layerGeo, this.backMaterial);
+    this.backMesh.position.z = -0.10;
+    this.spriteGroup.add(this.backMesh);
+
+    // Layer 2: Mid (Torso, Arms, Boots at Z = 0.0)
+    this.midMaterial = createMat(initialLayers.mid);
+    this.midMesh = new THREE.Mesh(layerGeo, this.midMaterial);
+    this.midMesh.position.z = 0.0;
+    this.spriteGroup.add(this.midMesh);
+
+    // Layer 3: Front (Headband, Face, Pauldrons, Front Sword at Z = +0.10)
+    this.frontMaterial = createMat(initialLayers.front);
+    this.frontMesh = new THREE.Mesh(layerGeo, this.frontMaterial);
+    this.frontMesh.position.z = 0.10;
+    this.spriteGroup.add(this.frontMesh);
   }
 
   private buildFloatingNametag(): void {
@@ -93,15 +146,15 @@ export class CharacterController implements Updatable {
     canvas.height = 64;
     const ctx = canvas.getContext('2d')!;
 
-    // Background semi-transparent capsule
-    ctx.fillStyle = 'rgba(10, 14, 20, 0.7)';
+    // Capsule background
+    ctx.fillStyle = 'rgba(10, 14, 20, 0.75)';
     ctx.roundRect(16, 8, 224, 48, 8);
     ctx.fill();
     ctx.strokeStyle = '#d4af37';
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Name: [Lv.99] Novice Traveler
+    // Name
     ctx.font = 'bold 17px sans-serif';
     ctx.fillStyle = '#fffae0';
     ctx.textAlign = 'center';
@@ -136,18 +189,16 @@ export class CharacterController implements Updatable {
     });
     this.rippleMesh = new THREE.Mesh(geo, this.rippleMaterial);
     this.rippleMesh.position.y = 0.04;
-    this.mesh.parent?.add(this.rippleMesh);
   }
 
   public update(delta: number, _elapsed: number): void {
     this.input.update();
 
-    // Attach ripple mesh to scene once parent is ready
     if (this.mesh.parent && !this.rippleMesh.parent) {
       this.mesh.parent.add(this.rippleMesh);
     }
 
-    // 1. Process RO1 Camera Rotation (Right Click Drag)
+    // Camera Orbit
     const { dx, dy } = this.input.consumeLookDelta();
     this.cameraYaw -= dx;
     this.cameraPitch = Math.max(0.25, Math.min(1.25, this.cameraPitch + dy));
@@ -155,20 +206,19 @@ export class CharacterController implements Updatable {
     const zoom = this.input.consumeZoomDelta();
     this.cameraDistance = Math.max(8.0, Math.min(32.0, this.cameraDistance + zoom));
 
-    // 2. Process /sit toggle
+    // Sitting state
     if (this.input.state.toggleSit) {
       this.input.state.toggleSit = false;
       this.isSitting = !this.isSitting;
       this.targetDestination = null;
     }
 
-    // 3. Process Click-to-Move Target
+    // Click target
     if (this.input.state.clickMoveTarget) {
       this.targetDestination = this.input.state.clickMoveTarget.clone();
       this.input.state.clickMoveTarget = null;
       this.isSitting = false;
 
-      // Trigger Green Target Ripple
       this.rippleMesh.position.set(this.targetDestination.x, 0.04, this.targetDestination.z);
       this.rippleMesh.scale.set(0.6, 0.6, 0.6);
       this.rippleMaterial.opacity = 1.0;
@@ -176,7 +226,6 @@ export class CharacterController implements Updatable {
       this.rippleActive = true;
     }
 
-    // Animate Ripple
     if (this.rippleActive) {
       this.rippleTimer -= delta;
       const progress = 1.0 - Math.max(0, this.rippleTimer / 0.45);
@@ -189,7 +238,7 @@ export class CharacterController implements Updatable {
       }
     }
 
-    // 4. Movement Logic (Click-to-Move or WASD)
+    // Movement Logic
     let moveX = 0;
     let moveZ = 0;
 
@@ -211,7 +260,6 @@ export class CharacterController implements Updatable {
       const mz = this.input.state.moveZ;
       if (Math.abs(mx) > 0.05 || Math.abs(mz) > 0.05) {
         this.isSitting = false;
-        // Direction relative to camera yaw
         const forward = new THREE.Vector3(-Math.sin(this.cameraYaw), 0, -Math.cos(this.cameraYaw));
         const right = new THREE.Vector3(Math.cos(this.cameraYaw), 0, -Math.sin(this.cameraYaw));
         const dir = new THREE.Vector3()
@@ -227,7 +275,6 @@ export class CharacterController implements Updatable {
     }
 
     if (this.isMoving && !this.isSitting) {
-      // 4-Way Direction
       if (Math.abs(moveX) > Math.abs(moveZ) * 1.1) {
         this.direction = moveX > 0 ? 'right' : 'left';
       } else {
@@ -244,26 +291,33 @@ export class CharacterController implements Updatable {
       this.position.x = resolved.x;
       this.position.z = resolved.z;
 
-      // Animate walk frames
       this.animTimer += delta * (this.input.state.isSprinting ? 12 : 8);
       const walkFrames = [1, 0, 3, 0];
       this.frameIndex = walkFrames[Math.floor(this.animTimer) % 4];
     } else {
       this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, 0, delta * 16);
-      this.frameIndex = this.isSitting ? 4 : 0; // Frame 4 is Sitting pose!
+      this.frameIndex = this.isSitting ? 4 : 0;
       this.animTimer = 0;
     }
 
-    // Update sprite texture
-    const newTex = PixelSpriteSheet.getTexture(this.direction, this.frameIndex);
-    if (this.spriteMaterial.map !== newTex) {
-      this.spriteMaterial.map = newTex;
-      this.spriteMaterial.needsUpdate = true;
+    // Update 3-Layer 2.5D Textures
+    const newLayers = PixelSpriteSheet.getLayers(this.direction, this.frameIndex);
+    if (this.backMaterial.map !== newLayers.back) {
+      this.backMaterial.map = newLayers.back;
+      this.backMaterial.needsUpdate = true;
+    }
+    if (this.midMaterial.map !== newLayers.mid) {
+      this.midMaterial.map = newLayers.mid;
+      this.midMaterial.needsUpdate = true;
+    }
+    if (this.frontMaterial.map !== newLayers.front) {
+      this.frontMaterial.map = newLayers.front;
+      this.frontMaterial.needsUpdate = true;
     }
 
     this.mesh.position.copy(this.position);
 
-    // 5. Update RO1 Camera
+    // Update RO1 Camera
     this.updateCamera(delta);
   }
 

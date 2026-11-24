@@ -33,8 +33,8 @@ async function bootstrap() {
     engine.scene.add(crowd.group);
     engine.registerUpdatable(crowd);
 
-    // 7. RO1 Classic Windows HUD (Basic Info, HP/SP, Hotbar, Emotes, Minimap)
-    const hud = new HUD(townMap, player, input, crowd);
+    // 7. RO1 Classic Windows HUD (Basic Info, HP/SP, Hotbar, Emotes, Minimap, DoF)
+    const hud = new HUD(townMap, player, input, crowd, engine.dofPass);
     engine.registerUpdatable({
       update: () => hud.update()
     });

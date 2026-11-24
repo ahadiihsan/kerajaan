@@ -2,6 +2,7 @@ import { TownMap } from '../map/TownMap';
 import { CharacterController } from '../character/CharacterController';
 import { InputManager } from '../character/InputManager';
 import { PlayerCrowd } from '../character/PlayerCrowd';
+import { DepthOfFieldPass } from '../core/DepthOfFieldPass';
 
 export class HUD {
   private container: HTMLElement;
@@ -23,14 +24,22 @@ export class HUD {
   private player: CharacterController;
   private input: InputManager;
   private crowd?: PlayerCrowd;
+  private dofPass?: DepthOfFieldPass;
 
   private currentLocation: string = 'Prontera Central Fountain';
 
-  constructor(townMap: TownMap, player: CharacterController, input: InputManager, crowd?: PlayerCrowd) {
+  constructor(
+    townMap: TownMap,
+    player: CharacterController,
+    input: InputManager,
+    crowd?: PlayerCrowd,
+    dofPass?: DepthOfFieldPass
+  ) {
     this.townMap = townMap;
     this.player = player;
     this.input = input;
     this.crowd = crowd;
+    this.dofPass = dofPass;
 
     this.container = document.createElement('div');
     this.container.id = 'hud-container';
@@ -186,7 +195,7 @@ export class HUD {
   }
 
   /**
-   * Classic RO1 Action Hotbar (Sit/Stand, Emotes, Camera Reset)
+   * Classic RO1 Action Hotbar (Sit/Stand, Emotes, Camera Reset, DoF Depth)
    */
   private buildRO1ActionHotbar(): void {
     const hotbar = document.createElement('div');
@@ -195,6 +204,7 @@ export class HUD {
     hotbar.innerHTML = `
       <button id="ro-btn-sit" class="ro-action-btn" title="Toggle Sit/Stand (/sit or press X)">🪑 Sit / Stand</button>
       <button id="ro-btn-emote" class="ro-action-btn" title="Emote (/gg)">♥ Emote</button>
+      <button id="ro-btn-dof" class="ro-action-btn active" title="Toggle Octopath-style Depth of Field">✨ DoF: ON</button>
       <button id="ro-btn-cam" class="ro-action-btn" title="Reset Camera">🎥 Reset Cam</button>
     `;
     this.container.appendChild(hotbar);
@@ -210,9 +220,18 @@ export class HUD {
       this.showFloatingEmote('♥');
     });
 
+    const dofBtn = hotbar.querySelector('#ro-btn-dof')!;
+    dofBtn.addEventListener('click', () => {
+      if (this.dofPass) {
+        const enabled = this.dofPass.toggle();
+        dofBtn.classList.toggle('active', enabled);
+        dofBtn.innerHTML = enabled ? '✨ DoF: ON' : '✨ DoF: OFF';
+      }
+    });
+
     const camBtn = hotbar.querySelector('#ro-btn-cam')!;
     camBtn.addEventListener('click', () => {
-      this.player.cameraDistance = 18.0;
+      this.player.cameraDistance = 12.0;
     });
   }
 

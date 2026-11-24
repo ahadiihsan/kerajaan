@@ -62,19 +62,33 @@ export class PlayerCrowd implements Updatable {
     this.shadowMesh.count = this.activeCount;
     this.group.add(this.shadowMesh);
 
-    // 2. 2D Anime Pixel Billboard Sprites
-    const spriteGeo = new THREE.PlaneGeometry(1.8, 2.2);
-    spriteGeo.translate(0, 1.1, 0); // Pivot at feet
+    // 2. 2D Anime Pixel Billboard Sprites (Lit by scene sun & lanterns)
+    const spriteGeo = new THREE.PlaneGeometry(1.7, 2.3);
+    spriteGeo.translate(0, 1.15, 0); // Pivot at feet
+
+    // Adjust vertex normals to face forward-upward to catch sunlight
+    const normals = spriteGeo.attributes.normal;
+    for (let i = 0; i < normals.count; i++) {
+      normals.setXYZ(i, 0, 0.45, 0.89);
+    }
+    normals.needsUpdate = true;
 
     const tex = PixelSpriteSheet.getTexture('down', 0);
-    const spriteMat = new THREE.MeshBasicMaterial({
+    const spriteMat = new THREE.MeshStandardMaterial({
       map: tex,
+      emissiveMap: tex,
+      emissive: new THREE.Color(0x909090),
+      emissiveIntensity: 0.65,
       transparent: true,
       alphaTest: 0.15,
+      roughness: 0.55,
+      metalness: 0.1,
       side: THREE.DoubleSide
     });
 
     this.spriteMesh = new THREE.InstancedMesh(spriteGeo, spriteMat, this.maxCount);
+    this.spriteMesh.castShadow = false; // Prevents 1,000 overlapping rectangular shadow streaks
+    this.spriteMesh.receiveShadow = false;
     this.spriteMesh.count = this.activeCount;
     this.group.add(this.spriteMesh);
   }
