@@ -150,9 +150,9 @@ export class PlayerCrowd implements Updatable {
     this.shadowMesh.count = this.activeCount;
   }
 
-  public update(delta: number, _elapsed: number): void {
+  public update(delta: number, _elapsed: number, cameraYaw: number = 0): void {
     const dummy = this.dummy;
-    const spriteTilt = THREE.MathUtils.degToRad(35); // Matches RO1 isometric camera angle
+    const spriteTilt = 0; // True RO1: Sprites stand vertically upright on the ground plane
 
     for (let i = 0; i < this.activeCount; i++) {
       const a = this.agents[i];
@@ -202,9 +202,11 @@ export class PlayerCrowd implements Updatable {
       dummy.updateMatrix();
       this.shadowMesh.setMatrixAt(i, dummy.matrix);
 
-      // 2. 2D Billboard Sprite Matrix
+      // 2. 2D Billboard Sprite Matrix (Camera-synced cylindrical billboarding)
       dummy.position.set(a.x, posY, a.z);
-      dummy.rotation.set(spriteTilt, 0, 0);
+      dummy.rotation.order = 'YXZ';
+      dummy.rotation.y = cameraYaw;
+      dummy.rotation.x = spriteTilt;
       dummy.updateMatrix();
       this.spriteMesh.setMatrixAt(i, dummy.matrix);
     }

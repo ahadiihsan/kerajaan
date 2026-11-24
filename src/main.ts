@@ -28,10 +28,13 @@ async function bootstrap() {
     engine.scene.add(player.mesh);
     engine.registerUpdatable(player);
 
-    // 6. Prontera 1,000 Player Crowd (Sitters, Wanders, Vending Banners)
+    // 6. Prontera Player Crowd (Sitters, Wanders, Vending Banners, scalable up to 1,000)
     const crowd = new PlayerCrowd(townMap, 1000);
+    crowd.setCrowdCount(100); // Clean, spacious default so player character is clearly visible
     engine.scene.add(crowd.group);
-    engine.registerUpdatable(crowd);
+    engine.registerUpdatable({
+      update: (delta, elapsed) => crowd.update(delta, elapsed, player.getCameraYaw())
+    });
 
     // 7. RO1 Classic Windows HUD (Basic Info, HP/SP, Hotbar, Emotes, Minimap, DoF)
     const hud = new HUD(townMap, player, input, crowd, engine.dofPass);

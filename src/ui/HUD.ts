@@ -162,15 +162,15 @@ export class HUD {
           </div>
           <div class="ro-stats-row">
             <span id="fps-value" class="ro-fps">75 FPS</span>
-            <span id="crowd-value" class="ro-crowd">1,000 Players</span>
+            <span id="crowd-value" class="ro-crowd">100 Players</span>
           </div>
         </div>
 
         <!-- Crowd Density Preset Buttons -->
         <div class="crowd-presets">
-          <button class="preset-btn" data-count="100">100</button>
+          <button class="preset-btn active" data-count="100">100</button>
           <button class="preset-btn" data-count="500">500</button>
-          <button class="preset-btn active" data-count="1000">1,000</button>
+          <button class="preset-btn" data-count="1000">1,000</button>
         </div>
       </div>
     `;

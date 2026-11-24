@@ -43,8 +43,9 @@ export class CharacterController implements Updatable {
   private currentSpeed: number = 0;
 
   public cameraDistance: number = 12.0;
-  private cameraYaw: number = 0;
+  public cameraYaw: number = 0;
   private cameraPitch: number = 0.52;
+  public facingAngle: number = 0; // World facing angle (0 = South / +Z)
 
   constructor(camera: THREE.PerspectiveCamera, input: InputManager, townMap: TownMap) {
     this.camera = camera;
@@ -77,7 +78,7 @@ export class CharacterController implements Updatable {
     sCtx.fillRect(0, 0, 64, 64);
 
     const shadowTex = new THREE.CanvasTexture(shadowCanvas);
-    const shadowGeo = new THREE.PlaneGeometry(1.6, 1.1);
+    const shadowGeo = new THREE.PlaneGeometry(1.2, 0.8);
     shadowGeo.rotateX(-Math.PI / 2);
     const shadowMat = new THREE.MeshBasicMaterial({
       map: shadowTex,
@@ -85,22 +86,24 @@ export class CharacterController implements Updatable {
       depthWrite: false
     });
     this.shadowDisc = new THREE.Mesh(shadowGeo, shadowMat);
-    this.shadowDisc.position.y = 0.03;
+    this.shadowDisc.position.y = 0.02;
     this.mesh.add(this.shadowDisc);
 
-    // 2. Sprite Anchor Group (tilted slightly back to face elevated camera)
+    // 2. Sprite Anchor Group (Standing strictly upright in world Y, matching RO1)
     this.spriteGroup = new THREE.Group();
-    this.spriteGroup.rotation.x = THREE.MathUtils.degToRad(30);
+    this.spriteGroup.rotation.order = 'YXZ';
+    this.spriteGroup.rotation.y = 0;
+    this.spriteGroup.rotation.x = 0;
     this.mesh.add(this.spriteGroup);
 
-    // Geometry for 2.5D layers (anchored at feet)
-    const layerGeo = new THREE.PlaneGeometry(1.85, 2.5);
-    layerGeo.translate(0, 1.25, 0);
+    // Geometry for 2.5D layers (anchored at feet, standing vertical)
+    const layerGeo = new THREE.PlaneGeometry(1.75, 2.4);
+    layerGeo.translate(0, 1.2, 0);
 
     // Set vertex normals facing slightly upward and forward to catch warm sunlight
     const normals = layerGeo.attributes.normal;
     for (let i = 0; i < normals.count; i++) {
-      normals.setXYZ(i, 0, 0.45, 0.89);
+      normals.setXYZ(i, 0, 0.35, 0.93);
     }
     normals.needsUpdate = true;
 
@@ -275,11 +278,8 @@ export class CharacterController implements Updatable {
     }
 
     if (this.isMoving && !this.isSitting) {
-      if (Math.abs(moveX) > Math.abs(moveZ) * 1.1) {
-        this.direction = moveX > 0 ? 'right' : 'left';
-      } else {
-        this.direction = moveZ > 0 ? 'down' : 'up';
-      }
+      // Calculate world-space facing orientation
+      this.facingAngle = Math.atan2(moveX, moveZ);
 
       const targetSpeed = this.input.state.isSprinting ? this.runSpeed : this.walkSpeed;
       this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, targetSpeed, delta * 14);
@@ -300,6 +300,27 @@ export class CharacterController implements Updatable {
       this.animTimer = 0;
     }
 
+    // Classic Ragnarok Online Camera-Relative Billboarding:
+    // Determine view direction relative to camera angle so orbiting shows 360° of character
+    let relAngle = this.facingAngle - this.cameraYaw;
+    relAngle = ((relAngle + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+
+    if (Math.abs(relAngle) <= Math.PI * 0.25) {
+      this.direction = 'down'; // Facing toward camera
+    } else if (Math.abs(relAngle) >= Math.PI * 0.75) {
+      this.direction = 'up'; // Facing away from camera (back view)
+    } else if (relAngle > 0) {
+      this.direction = 'right'; // Facing camera right
+    } else {
+      this.direction = 'left'; // Facing camera left
+    }
+
+    // Authentic Ragnarok Online Cylindrical Billboarding:
+    // Sprite quad stands vertically upright and turns around Y to face camera orbit
+    this.spriteGroup.rotation.order = 'YXZ';
+    this.spriteGroup.rotation.y = this.cameraYaw;
+    this.spriteGroup.rotation.x = 0;
+
     // Update 3-Layer 2.5D Textures
     const newLayers = PixelSpriteSheet.getLayers(this.direction, this.frameIndex);
     if (this.backMaterial.map !== newLayers.back) {
@@ -319,6 +340,10 @@ export class CharacterController implements Updatable {
 
     // Update RO1 Camera
     this.updateCamera(delta);
+  }
+
+  public getCameraYaw(): number {
+    return this.cameraYaw;
   }
 
   private updateCamera(delta: number): void {
