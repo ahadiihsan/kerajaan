@@ -4,7 +4,8 @@ import type { Environment } from '../core/Environment';
 import { CharacterController } from '../character/CharacterController';
 import { InputManager } from '../character/InputManager';
 import { PlayerCrowd } from '../character/PlayerCrowd';
-import { Engine, GRAPHICS_PRESETS, type GraphicsPreset } from '../core/Engine';
+import type { Engine } from '../core/Engine';
+import { mountGraphicsSettings } from './GraphicsSettings';
 import { MultiplayerManager } from '../multiplayer/MultiplayerManager';
 import { AVAILABLE_CHARACTERS } from '../character/ROCharacterAtlas';
 
@@ -25,7 +26,7 @@ export class HUD {
   private mpStatusDisplay!: HTMLElement;
   private frameCount: number = 0;
   private lastFpsTime: number = performance.now();
-  private currentFps: number = 60;
+  private updateGraphicsFps?: (fps: number) => void;
 
   // RO1 Classic Chat Box
   private chatMessagesEl!: HTMLElement;
@@ -271,7 +272,8 @@ export class HUD {
 
     // Keyboard shortcut: Press Enter to focus chat input
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && document.activeElement !== this.chatInputEl) {
+      if (e.key === 'Enter' && document.activeElement !== this.chatInputEl &&
+        !(e.target as HTMLElement | null)?.closest('dialog[open]')) {
         e.preventDefault();
         this.chatInputEl.focus();
       }
@@ -317,13 +319,7 @@ export class HUD {
       <button id="ro-btn-jump" class="ro-action-btn" type="button" title="Jump (Space)">Jump</button>
       <button id="ro-btn-emote" class="ro-action-btn" title="Emote (/gg)">♥ Emote</button>
       <button id="ro-btn-stylist" class="ro-action-btn" title="Stylist: Change Hairstyle & Color">💇 Stylist</button>
-      <label class="graphics-control">
-        Graphics
-        <select class="ro-action-btn" id="graphics-preset">
-          ${Object.entries(GRAPHICS_PRESETS).map(([value, preset]) =>
-            `<option value="${value}">${preset.label}</option>`).join('')}
-        </select>
-      </label>
+      <button id="ro-btn-graphics" class="ro-action-btn" type="button" aria-haspopup="dialog" aria-controls="graphics-settings">Graphics</button>
       <button id="ro-btn-cam" class="ro-action-btn" title="Reset Camera">🎥 Reset Cam</button>
     `;
     this.container.appendChild(hotbar);
@@ -347,9 +343,9 @@ export class HUD {
       stylistBtn.classList.toggle('active', this.isStylistOpen);
     });
 
-    const graphics = hotbar.querySelector<HTMLSelectElement>('#graphics-preset')!;
-    graphics.value = this.engine.graphics;
-    graphics.addEventListener('change', () => this.engine.setGraphics(graphics.value as GraphicsPreset));
+    this.updateGraphicsFps = mountGraphicsSettings(
+      this.container, hotbar.querySelector<HTMLButtonElement>('#ro-btn-graphics')!, this.engine
+    );
 
     const camBtn = hotbar.querySelector('#ro-btn-cam')!;
     camBtn.addEventListener('click', () => {
@@ -512,13 +508,14 @@ export class HUD {
     const elapsed = now - this.lastFpsTime;
 
     if (elapsed >= 500) {
-      this.currentFps = Math.round((this.frameCount * 1000) / elapsed);
+      const fps = Math.round((this.frameCount * 1000) / elapsed);
       this.frameCount = 0;
       this.lastFpsTime = now;
 
       if (this.fpsDisplay) {
-        this.fpsDisplay.textContent = `${this.currentFps} FPS`;
+        this.fpsDisplay.textContent = `${fps} FPS`;
       }
+      this.updateGraphicsFps?.(fps);
     }
   }
 

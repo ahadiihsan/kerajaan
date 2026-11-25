@@ -25,13 +25,16 @@ Open [http://localhost:3000](http://localhost:3000). The Vite dev server also se
 
 ## Graphics
 
-Choose a preset from the action bar. Touch-first devices and devices that report four CPU threads or less, or 4 GB of memory or less, start in Performance. The browser remembers new preset selections. An older saved Balanced value uses the device default because earlier versions saved it automatically. Rendering pauses while the tab is hidden.
+Open **Graphics** from the action bar. The panel shows the measured FPS and render resolution. Choose a preset, or set the frame cap, resolution scale, view distance, sun shadows, water animation, and depth of field independently. Changes apply immediately and are saved in the browser. Rendering pauses while the tab is hidden.
 
-| Preset | Frame cap | Max render pixel ratio | Effects |
-| --- | --- | --- | --- |
-| Performance | 30 FPS | 0.75× | Baked water highlights and ground shading |
-| Balanced | 60 FPS | 1× | Animated water and sun shadows |
-| Quality | 60 FPS | 1.5× | Animated water, sun shadows, and tilt-shift depth of field |
+| Preset | Frame cap | Render scale | View distance | Effects |
+| --- | --- | --- | --- | --- |
+| Battery Saver | 30 FPS | 60% | Near | Baked water and ground shading |
+| Performance | 60 FPS | 65% | Near | Baked water and ground shading |
+| Balanced | 60 FPS | 100% | Standard | Animated water and sun shadows |
+| Quality | 60 FPS | 150% | Far | Animated water, sun shadows, and tilt-shift depth of field |
+
+Touch-first and lower-spec devices start in Performance when a preset hasn't been selected. Choose Battery Saver to cap the game at 30 FPS, or lower render resolution to reduce GPU work while keeping a higher cap.
 
 Set simulated visitors to **0** to reduce CPU and GPU work further. Multiplayer players remain visible.
 

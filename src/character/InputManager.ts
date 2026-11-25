@@ -144,6 +144,7 @@ export class InputManager {
     }, { passive: true });
 
     window.addEventListener('wheel', (e) => {
+      if ((e.target as HTMLElement)?.closest('.ui-interactive')) return;
       this.state.zoomDelta += Math.sign(e.deltaY) * 0.5;
     }, { passive: true });
   }

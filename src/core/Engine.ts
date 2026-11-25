@@ -4,14 +4,9 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { DepthOfFieldPass } from './DepthOfFieldPass';
 
-export const GRAPHICS_PRESETS = {
-  performance: { label: 'Performance', pixelRatio: 0.75, maxFps: 30, shadows: false, depthOfField: false },
-  balanced: { label: 'Balanced', pixelRatio: 1, maxFps: 60, shadows: true, depthOfField: false },
-  quality: { label: 'Quality', pixelRatio: 1.5, maxFps: 60, shadows: true, depthOfField: true }
-};
-export type GraphicsPreset = keyof typeof GRAPHICS_PRESETS;
-
-const GRAPHICS_PREFERENCE_KEY = 'kerajaan.graphics.preferred';
+import {
+  GRAPHICS_PRESETS, loadGraphics, saveGraphics, VIEW_DISTANCES, type GraphicsOptions, type GraphicsPreset
+} from './GraphicsOptions';
 
 export interface Updatable {
   update(delta: number, elapsed: number): void;
@@ -22,7 +17,9 @@ export class Engine {
   public camera: THREE.PerspectiveCamera;
   public renderer: THREE.WebGLRenderer;
   private postprocessing?: { composer: EffectComposer; depthOfField: DepthOfFieldPass };
-  public graphics: GraphicsPreset = 'balanced';
+  private preference = loadGraphics();
+  public get graphics(): Readonly<GraphicsOptions> { return this.preference.options; }
+  public get graphicsPreset(): GraphicsPreset { return this.preference.preset; }
   private updatables: Updatable[] = [];
   private isRunning = false;
   private frameRequest: number | null = null;
@@ -49,10 +46,9 @@ export class Engine {
     this.camera.lookAt(0, 1.2, 0);
 
     // 3. WebGL Renderer with High-End Lighting & ACES Filmic Tone Mapping
-    const initialGraphics = this.loadGraphics();
     this.renderer = new THREE.WebGLRenderer({
       powerPreference: 'low-power',
-      antialias: initialGraphics !== 'performance',
+      antialias: this.graphics.renderScale >= 0.85,
       alpha: false,
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -64,7 +60,7 @@ export class Engine {
 
     this.container.appendChild(this.renderer.domElement);
 
-    this.applyGraphics(initialGraphics);
+    this.applyGraphics();
 
     // 6. Window Resize Handler
     window.addEventListener('resize', this.onResize.bind(this));
@@ -82,20 +78,27 @@ export class Engine {
   }
 
   public setGraphics(preset: GraphicsPreset): void {
-    this.applyGraphics(preset);
-    try {
-      localStorage.setItem(GRAPHICS_PREFERENCE_KEY, preset);
-    } catch {
-      // Storage can be unavailable in a private browsing session.
-    }
+    const previous = this.graphics;
+    this.preference = { preset, options: { ...GRAPHICS_PRESETS[preset].options } };
+    this.applyGraphics(previous);
+    saveGraphics(this.preference);
   }
 
-  private applyGraphics(preset: GraphicsPreset): void {
-    this.graphics = preset;
-    this.nextFrameAt = undefined;
-    const settings = GRAPHICS_PRESETS[preset];
-    this.renderer.shadowMap.enabled = settings.shadows;
-    this.renderer.shadowMap.needsUpdate = settings.shadows;
+  public updateGraphics(changes: Partial<GraphicsOptions>): void {
+    const previous = this.graphics;
+    this.preference.options = { ...this.graphics, ...changes };
+    this.applyGraphics(previous);
+    saveGraphics(this.preference);
+  }
+
+  private applyGraphics(previous?: Readonly<GraphicsOptions>): void {
+    const settings = this.graphics;
+    if (previous?.frameLimit !== settings.frameLimit) this.nextFrameAt = undefined;
+    if (this.renderer.shadowMap.enabled !== settings.shadows) {
+      this.renderer.shadowMap.enabled = settings.shadows;
+      this.renderer.shadowMap.needsUpdate = settings.shadows;
+    }
+    if (previous?.viewDistance !== settings.viewDistance) this.applyViewDistance();
 
     if (settings.depthOfField && !this.postprocessing) {
       const composer = new EffectComposer(this.renderer);
@@ -112,30 +115,26 @@ export class Engine {
       this.postprocessing = undefined;
     }
 
-    this.onResize();
+    if (previous?.renderScale !== settings.renderScale || previous?.depthOfField !== settings.depthOfField) {
+      this.onResize();
+    }
   }
 
-  private loadGraphics(): GraphicsPreset {
-    try {
-      const preferred = localStorage.getItem(GRAPHICS_PREFERENCE_KEY);
-      if (preferred && Object.hasOwn(GRAPHICS_PRESETS, preferred)) return preferred as GraphicsPreset;
-      const legacy = localStorage.getItem('kerajaan.graphics');
-      // Older builds wrote Balanced on startup even when the player never selected it.
-      if (legacy === 'performance' || legacy === 'quality') return legacy;
-    } catch {
-      // Storage can be unavailable in a private browsing session.
+  private applyViewDistance(): void {
+    const distance = VIEW_DISTANCES[this.graphics.viewDistance];
+    this.camera.far = distance + 20;
+    this.camera.updateProjectionMatrix();
+    if (this.scene.fog instanceof THREE.Fog) {
+      this.scene.fog.near = distance * (28 / 95);
+      this.scene.fog.far = distance;
     }
-    const { hardwareConcurrency, deviceMemory } = navigator as Navigator & { deviceMemory?: number };
-    const constrained = (hardwareConcurrency > 0 && hardwareConcurrency <= 4) ||
-      (deviceMemory !== undefined && deviceMemory <= 4) ||
-      window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-    return constrained ? 'performance' : 'balanced';
   }
 
   private onResize(): void {
     const width = this.container.clientWidth || window.innerWidth;
     const height = this.container.clientHeight || window.innerHeight;
-    const pixelRatio = Math.min(window.devicePixelRatio, GRAPHICS_PRESETS[this.graphics].pixelRatio);
+    const maxTextureSize = this.renderer.capabilities.maxTextureSize;
+    const pixelRatio = Math.min(this.graphics.renderScale, maxTextureSize / Math.max(width, height));
 
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
@@ -154,6 +153,7 @@ export class Engine {
   public start(): void {
     if (this.isRunning) return;
     this.isRunning = true;
+    this.applyViewDistance();
     document.addEventListener('visibilitychange', this.syncFrameRequest);
     this.syncFrameRequest();
   }
@@ -175,11 +175,14 @@ export class Engine {
     if (!this.isRunning || document.hidden) return;
     this.frameRequest = requestAnimationFrame(this.renderFrame);
 
-    const scheduled = this.nextFrameAt ?? now;
-    if (now + 0.75 < scheduled) return;
-
-    const interval = 1000 / GRAPHICS_PRESETS[this.graphics].maxFps;
-    this.nextFrameAt = scheduled + interval * Math.max(1, Math.floor((now - scheduled) / interval) + 1);
+    const limit = this.graphics.frameLimit;
+    if (limit !== 'display') {
+      const interval = 1000 / limit;
+      const scheduled = this.nextFrameAt ?? now;
+      // Allow small refresh-timestamp jitter without missing an entire display refresh.
+      if (now + Math.min(2, interval * 0.15) < scheduled) return;
+      this.nextFrameAt = (now - scheduled > interval / 2 ? now : scheduled) + interval;
+    }
     const delta = Math.min((now - (this.lastFrameAt ?? now)) / 1000, 0.1);
     this.lastFrameAt = now;
     this.elapsed += delta;

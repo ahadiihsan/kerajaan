@@ -19,7 +19,7 @@ async function bootstrap() {
     const forest = new ForestMap();
     engine.scene.add(forest.group);
     engine.registerUpdatable({
-      update: (_delta, elapsed) => forest.updateWater(elapsed, engine.graphics !== 'performance')
+      update: (_delta, elapsed) => forest.updateWater(elapsed, engine.graphics.animatedWater)
     });
 
     const input = new InputManager();

@@ -819,23 +819,173 @@ html, body {
   }
 }
 
-.graphics-control {
+#graphics-settings {
+  width: min(100% - 24px, 32rem);
+  max-width: none;
+  max-height: calc(100dvh - 24px);
+  margin: auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  color-scheme: dark;
+  color: #f4eddc;
+  background: #172230;
+  border: 1px solid #907c53;
+  border-radius: 12px;
+  box-shadow: 0 18px 56px #090e16a8;
+  cursor: default;
+}
+
+#graphics-settings::backdrop {
+  background: #080f187d;
+}
+
+.graphics-header,
+.graphics-footer {
+  position: sticky;
+  background: #172230;
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: #f5f6fa;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+}
+
+.graphics-header {
+  top: 0;
+  border-bottom: 1px solid #394756;
+}
+
+.graphics-header h2 {
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.graphics-fps {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: #bec9d4;
   font-size: 12px;
-  font-weight: 600;
+  white-space: nowrap;
 }
 
-.graphics-control select {
-  background: #26332e;
-  border-color: #a8b3aa;
+.graphics-fps output {
+  min-width: 3ch;
+  color: #f3cc72;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
-.graphics-control select:focus-visible {
-  outline: 2px solid #fed330;
+.graphics-options {
+  display: grid;
+  gap: 16px;
+  padding: 16px 20px;
+}
+
+.graphics-options fieldset {
+  min-width: 0;
+  border: 0;
+}
+
+.graphics-options legend {
+  margin-bottom: 4px;
+  color: #f3cc72;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.graphics-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, max-content);
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  padding: 4px 0;
+  border-bottom: 1px solid #394756;
+  font-size: 14px;
+}
+
+.graphics-field small {
+  display: block;
+  margin-top: 2px;
+  color: #bdc6d1;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.graphics-field select {
+  width: min(154px, 42vw);
+  min-height: 38px;
+  padding: 0 8px;
+  color: inherit;
+  background: #243142;
+  border: 1px solid #6f7c8d;
+  border-radius: 5px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.graphics-effect {
+  cursor: pointer;
+}
+
+.graphics-effect input {
+  width: 18px;
+  height: 18px;
+  margin-inline: 9px;
+  accent-color: #f3cc72;
+  cursor: pointer;
+}
+
+#graphics-settings :focus-visible {
+  outline: 2px solid #f3cc72;
   outline-offset: 2px;
+}
+
+.graphics-footer {
+  bottom: 0;
+  border-top: 1px solid #394756;
+}
+
+.graphics-footer button {
+  min-height: 40px;
+}
+
+.graphics-footer button:disabled {
+  color: #a9b4bf;
+  background: #26313e;
+  border-color: #566372;
+  cursor: default;
+}
+
+.graphics-footer .graphics-done {
+  min-width: 90px;
+  color: #18222d;
+  background: #edc367;
+  border-color: #edc367;
+}
+
+.graphics-footer .graphics-done:hover {
+  color: #18222d;
+  background: #f8d88f;
+}
+
+@media (max-width: 640px) {
+  .graphics-header,
+  .graphics-footer {
+    padding: 10px 14px;
+  }
+
+  .graphics-options {
+    padding: 14px;
+  }
+
+  .graphics-field select,
+  .graphics-footer button {
+    min-height: 44px;
+  }
 }
 
 @media (max-width: 960px) {
@@ -880,7 +1030,7 @@ html, body {
 
 
 @media (max-width: 768px) {
-  #ro-action-hotbar #ro-btn-jump {
+  #ro-action-hotbar :is(#ro-btn-jump, #ro-btn-graphics) {
     min-height: 44px;
   }
 }
