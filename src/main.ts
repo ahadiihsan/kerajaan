@@ -19,10 +19,11 @@ async function bootstrap() {
 
     // 3. Setup Prontera Environment & Terrain
     const env = new Environment(engine.scene);
+    engine.registerUpdatable(env);
 
     // 4. Assemble Prontera Town Map (Central Fountain, Vending Carts, Castle, Canal)
     const townMap = new TownMap();
-    townMap.assembleTown();
+    await townMap.assembleTown();
     engine.scene.add(townMap.group);
 
     // 5. Input Manager with RO1 Click-to-Move Raycasting on Ground
@@ -42,7 +43,7 @@ async function bootstrap() {
 
     // 8. Prontera Player Crowd (Sitters, Wanders, Vending Banners, scalable up to 1,000)
     const crowd = new PlayerCrowd(townMap, 1000);
-    crowd.setCrowdCount(100); // Clean, spacious default so player character is clearly visible
+    crowd.setCrowdCount(0); // Clean, spacious default so player character is clearly visible
     engine.scene.add(crowd.group);
     engine.registerUpdatable({
       update: (delta, elapsed) => crowd.update(delta, elapsed, player.getCameraYaw())
@@ -50,12 +51,13 @@ async function bootstrap() {
 
     // 9. RO1 Classic Windows HUD (Basic Info, Chat Box, Hotbar, Emotes, Minimap, DoF)
     const hud = new HUD(townMap, player, input, crowd, engine.dofPass, multiplayer);
+    hud.bindTimeControls(env);
     engine.registerUpdatable({
       update: () => hud.update()
     });
 
     // 10. Smooth reveal
-    hud.updateLoading(100, 100, 'Prontera');
+    hud.updateLoading(100, 100, 'Shepherd’s Clearing');
     setTimeout(() => {
       hud.hideLoading();
     }, 250);

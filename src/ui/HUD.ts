@@ -1,3 +1,4 @@
+import { Environment } from '../core/Environment';
 import { TownMap } from '../map/TownMap';
 import { CharacterController } from '../character/CharacterController';
 import { InputManager } from '../character/InputManager';
@@ -38,7 +39,7 @@ export class HUD {
   private dofPass?: DepthOfFieldPass;
   private multiplayer?: MultiplayerManager;
 
-  private currentLocation: string = 'Prontera Central Fountain';
+  private currentLocation: string = 'Shepherd’s Clearing';
 
   constructor(
     townMap: TownMap,
@@ -76,12 +77,12 @@ export class HUD {
     this.loadingOverlay.innerHTML = `
       <div class="loading-card">
         <div class="heraldry-icon">⚔️</div>
-        <h1 class="title">Ragnarok Online</h1>
-        <p class="subtitle">Entering Capital City Prontera (1,000 Players)...</p>
+        <h1 class="title">Kerajaan</h1>
+        <p class="subtitle">A small flock. A forest. The beginning of your kingdom.</p>
         <div class="progress-bar-track">
           <div id="progress-bar-fill" class="progress-bar-fill"></div>
         </div>
-        <div id="loading-asset-text" class="asset-text">Loading Prontera assets...</div>
+        <div id="loading-asset-text" class="asset-text">Loading woodland assets...</div>
       </div>
     `;
     this.container.appendChild(this.loadingOverlay);
@@ -113,9 +114,9 @@ export class HUD {
     this.locationBanner = document.createElement('div');
     this.locationBanner.id = 'location-banner';
     this.locationBanner.innerHTML = `
-      <div class="banner-ornament">⚔ Prontera Capital ⚔</div>
-      <div id="location-name" class="location-name">Prontera Central Fountain</div>
-      <div class="realm-tag">Kingdom of Rune-Midgard</div>
+      <div class="banner-ornament">A Kingdom Begins</div>
+      <div id="location-name" class="location-name">Shepherd’s Clearing</div>
+      <div class="realm-tag">Chapter I · The Shepherd</div>
     `;
     this.container.appendChild(this.locationBanner);
   }
@@ -150,8 +151,8 @@ export class HUD {
         <span class="ro-window-close">-</span>
       </div>
       <div class="ro-window-body">
-        <div class="ro-char-name">Novice Traveler</div>
-        <div class="ro-char-job">Swordsman Lv. 99 / Job 50</div>
+        <div class="ro-char-name">Wandering Shepherd</div>
+        <div class="ro-char-job">Shepherd · Level 1</div>
         
         <!-- HP Bar -->
         <div class="ro-bar-row">
@@ -175,7 +176,7 @@ export class HUD {
         <div class="ro-server-status">
           <div class="ro-status-row">
             <span class="ro-dot"></span>
-            <span class="ro-status-text">Server: Prontera 01</span>
+            <span class="ro-status-text">Realm: The Woodland</span>
           </div>
           <div class="ro-status-row">
             <span class="ro-dot online-dot" id="mp-dot"></span>
@@ -183,15 +184,15 @@ export class HUD {
           </div>
           <div class="ro-stats-row">
             <span id="fps-value" class="ro-fps">75 FPS</span>
-            <span id="crowd-value" class="ro-crowd">100 Players</span>
+            <span id="crowd-value" class="ro-crowd">Quiet homestead</span>
           </div>
         </div>
 
         <!-- Crowd Density Preset Buttons -->
         <div class="crowd-presets">
-          <button class="preset-btn active" data-count="100">100</button>
-          <button class="preset-btn" data-count="500">500</button>
-          <button class="preset-btn" data-count="1000">1,000</button>
+          <button class="preset-btn active" data-count="0">Quiet</button>
+          <button class="preset-btn" data-count="10">10</button>
+          <button class="preset-btn" data-count="30">30</button>
         </div>
       </div>
     `;
@@ -226,7 +227,7 @@ export class HUD {
     chatBox.className = 'ui-interactive';
     chatBox.innerHTML = `
       <div id="ro-chat-messages" class="ro-chat-messages">
-        <div class="chat-msg system">⚔️ Welcome to Ragnarok Online Prontera Square!</div>
+        <div class="chat-msg system">Welcome home. Your kingdom begins in a quiet forest clearing.</div>
         <div class="chat-msg system">💬 Type below or press Enter to chat with connected players.</div>
       </div>
       <form id="ro-chat-form" class="ro-chat-form">
@@ -344,7 +345,7 @@ export class HUD {
 
     const camBtn = hotbar.querySelector('#ro-btn-cam')!;
     camBtn.addEventListener('click', () => {
-      this.player.cameraDistance = 12.0;
+      this.player.cameraDistance = 30.0;
       this.player.cameraYaw = 0;
     });
   }
@@ -453,7 +454,39 @@ export class HUD {
     this.container.appendChild(hints);
   }
 
+  public bindTimeControls(environment: Environment): void {
+    const controls = document.createElement('div');
+    controls.className = 'time-controls ui-interactive';
+    controls.innerHTML = `
+      <span id="world-clock"></span>
+      <button type="button" id="time-pause" aria-label="Pause game time">Pause</button>
+      <label>Time <input id="time-hour" type="range" min="0" max="23.9" step="0.1" aria-label="Time of day" /></label>
+    `;
+    controls.addEventListener('keydown', event => event.stopPropagation());
+    this.locationBanner.appendChild(controls);
+    const clock = controls.querySelector<HTMLElement>('#world-clock')!;
+    const pause = controls.querySelector<HTMLButtonElement>('#time-pause')!;
+    const slider = controls.querySelector<HTMLInputElement>('#time-hour')!;
+    pause.addEventListener('click', () => {
+      environment.paused = !environment.paused;
+      pause.textContent = environment.paused ? 'Resume' : 'Pause';
+      pause.setAttribute('aria-label', environment.paused ? 'Resume game time' : 'Pause game time');
+    });
+    slider.addEventListener('input', () => { environment.hour = Number(slider.value); environment.update(0); });
+    const refresh = () => {
+      const minutes = Math.floor(environment.hour * 60);
+      const text = `Day ${environment.day} · ${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')} · ${environment.phase}`;
+      if (clock.textContent !== text) clock.textContent = text;
+      if (document.activeElement !== slider) slider.value = String(environment.hour);
+    };
+    this.refreshClock = refresh;
+    refresh();
+  }
+
+  private refreshClock?: () => void;
+
   public update(): void {
+    this.refreshClock?.();
     this.updateFps();
     this.updateLocation();
     this.drawMinimap();
@@ -492,7 +525,7 @@ export class HUD {
       }
     }
 
-    const newLoc = minDist < 24 ? closest.name : 'Rune-Midgard Outskirts';
+    const newLoc = minDist < 24 ? closest.name : 'The Deep Woods';
     if (newLoc !== this.currentLocation) {
       this.currentLocation = newLoc;
       const el = document.getElementById('location-name');
@@ -527,39 +560,28 @@ export class HUD {
     const px = this.player.position.x;
     const pz = this.player.position.z;
 
-    // Roads
-    ctx.fillStyle = '#7a7065';
-    const plazaX = centerX + (0 - px) * scale;
-    const plazaY = centerY + (0 - pz) * scale;
+    // The minimap uses the same tree positions and footprints as the world.
+    ctx.strokeStyle = '#9b8860';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(plazaX, plazaY, 24 * scale, 0, Math.PI * 2);
-    ctx.fill();
-
-    const roadNSX = centerX + (0 - px) * scale;
-    ctx.fillRect(roadNSX - 4 * scale, centerY + (-65 - pz) * scale, 8 * scale, 130 * scale);
-
-    const roadEWY = centerY + (0 - pz) * scale;
-    ctx.fillRect(centerX + (-65 - px) * scale, roadEWY - 4 * scale, 130 * scale, 8 * scale);
-
-    // Buildings
-    ctx.fillStyle = '#8a4b2a';
-    ctx.strokeStyle = '#4e2815';
-    ctx.lineWidth = 1;
-
-    for (const box of this.townMap.collisionBoxes) {
-      const bx = centerX + (box.minX - px) * scale;
-      const by = centerY + (box.minZ - pz) * scale;
-      const bw = (box.maxX - box.minX) * scale;
-      const bh = (box.maxZ - box.minZ) * scale;
-      ctx.fillRect(bx, by, bw, bh);
-      ctx.strokeRect(bx, by, bw, bh);
+    for (let z = -75; z <= 75; z += 2) {
+      const x = Math.sin(z * 0.065) * 5;
+      if (z === -75) ctx.moveTo(centerX + x - px, centerY + z - pz);
+      else ctx.lineTo(centerX + x - px, centerY + z - pz);
     }
-
-    // Prontera Fountain Icon (Blue circle)
-    ctx.fillStyle = '#3498db';
-    ctx.beginPath();
-    ctx.arc(plazaX, plazaY, 5 * scale, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#426743';
+    for (const tree of this.townMap.trees) {
+      ctx.beginPath();
+      ctx.arc(centerX + tree.x - px, centerY + tree.z - pz, tree.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#b18e60';
+    for (const box of this.townMap.collisionBoxes) {
+      if (box.maxX - box.minX < 1) continue;
+      ctx.fillRect(centerX + (box.minX - px) * scale, centerY + (box.minZ - pz) * scale,
+        (box.maxX - box.minX) * scale, (box.maxZ - box.minZ) * scale);
+    }
 
     // Player
     ctx.fillStyle = '#00e5ff';

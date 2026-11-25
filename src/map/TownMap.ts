@@ -1,299 +1,127 @@
 import * as THREE from 'three';
-import { LowPolyBuilder, LowPolyPalette } from './LowPolyBuilder';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import villageUrl from '../../models/village assets.glb?url';
 
-export interface CollisionBox {
-  minX: number;
-  maxX: number;
-  minZ: number;
-  maxZ: number;
-}
-
+export interface CollisionBox { minX: number; maxX: number; minZ: number; maxZ: number; }
 export interface Landmark {
-  name: string;
-  x: number;
-  z: number;
+  name: string; x: number; z: number;
   type: 'plaza' | 'hall' | 'tavern' | 'tower' | 'gate' | 'residential';
 }
 
+/** A first homestead carved out of a much older forest. */
 export class TownMap {
-  public group: THREE.Group;
+  public group = new THREE.Group();
   public collisionBoxes: CollisionBox[] = [];
   public landmarks: Landmark[] = [];
+  public trees: { x: number; z: number; radius: number }[] = [];
+  private assets = new Map<string, THREE.Object3D>();
+  private seed = 1729;
 
-  constructor() {
-    this.group = new THREE.Group();
-    this.group.name = 'PronteraTownMap';
+  private random(): number {
+    this.seed = (this.seed * 1664525 + 1013904223) >>> 0;
+    return this.seed / 4294967296;
   }
 
-  public assembleTown(): void {
-    // 1. Central Prontera Fountain & Vending Carts
-    this.buildPronteraPlaza();
-    this.buildWaterCanalAndBridge();
-
-    // 2. Prontera Castle & The Pub
-    this.buildLandmarkBuildings();
-
-    // 3. Residential & Artisan Quarters
-    this.buildResidentialDistricts();
-
-    // 4. Street Lanterns & Outskirts
-    this.buildStreetLanterns();
-    this.buildFoliage();
+  public async assembleTown(): Promise<void> {
+    this.group.name = 'ShepherdsForest';
+    const kit = await new GLTFLoader().loadAsync(villageUrl);
+    // The export contains coincident duplicate meshes. Use the named originals.
+    kit.scene.traverse(object => {
+      if (object instanceof THREE.Mesh) {
+        this.assets.set(object.name, object);
+      }
+    });
+    this.place('House_Blue', -7, -4, 5.3, 0.12, true);
+    this.place('Barn', 9, -9, 5.2, -0.12, true);
+    this.place('Well', -4, 3, 1.5, 0, true);
+    this.place('Pond', -20, 8, 10, 0.3, true);
+    this.place('Hay_Cart', 6, -4, 2.4, -0.4, true);
+    this.place('Hay_Bale', 11, -3, 1.4);
+    this.place('Hay_Pile', 12, -5, 1.5);
+    this.place('Barrell', -10, -1, 0.9);
+    this.place('Crate', -9, 0, 0.8);
+    this.place('Bench', -5, -0.5, 1.8, 0.15);
+    // Stepping stones from the cottage door to the woodland footpath.
+    for (let i = 0; i < 7; i++) {
+      this.place('StonePath', -7 + i * 0.9, -1.8 + i * 0.3, 1.05, 0.25 + (i % 2) * 0.15);
+    }
+    for (let i = 0; i < 6; i++) {
+      this.place('Fence', 5 + i * 2, 7, 2, 0, true);
+      this.place('Fence', 5 + i * 2, 16, 2, 0, true);
+    }
+    for (let i = 0; i < 4; i++) this.place('Fence', 17, 7 + i * 2.3, 2.3, -Math.PI / 2, true);
+    this.landmarks.push(
+      { name: "Shepherd’s Clearing", x: 0, z: 8, type: 'plaza' },
+      { name: 'Your First Home', x: -7, z: -4, type: 'residential' },
+      { name: 'The Old Barn', x: 9, z: -9, type: 'hall' },
+      { name: 'Willow Pond', x: -20, z: 8, type: 'residential' },
+    );
+    const species = ['Tree_Pine', 'Tree_Square', 'Tree_Tall'];
+    for (let x = -72; x <= 72; x += 4.4) {
+      for (let z = -72; z <= 72; z += 4.4) {
+        const tx = x + (this.random() - 0.5) * 3.8;
+        const tz = z + (this.random() - 0.5) * 3.8;
+        const clearing = ((tx + 1) / 23) ** 2 + ((tz - 3) / 21) ** 2;
+        const trail = Math.abs(tx - Math.sin(tz * 0.065) * 5) < 3;
+        if (clearing < 1 || trail || this.random() < 0.13) continue;
+        const height = 4 + this.random() * 4.5;
+        this.place(species[Math.floor(this.random() * species.length)], tx, tz, height, this.random() * Math.PI * 2);
+        this.trees.push({ x: tx, z: tz, radius: height * 0.25 });
+        this.collisionBoxes.push({ minX: tx - 0.3, maxX: tx + 0.3, minZ: tz - 0.3, maxZ: tz + 0.3 });
+      }
+    }
+    for (let i = 0; i < 180; i++) {
+      const x = (this.random() - 0.5) * 110;
+      const z = (this.random() - 0.5) * 110;
+      if (Math.abs(x - Math.sin(z * 0.065) * 5) < 3 || Math.hypot(x, z - 10) < 4) continue;
+      this.place(i % 9 === 0 ? 'Boulder.001' : i % 3 === 0 ? 'Shroom' : 'Daisy', x, z,
+        i % 9 === 0 ? 0.5 + this.random() : 0.18 + this.random() * 0.2, this.random() * 6);
+    }
+    for (const [x, z] of [[8, 10], [12, 12], [14, 9], [9, 14], [5, 12]]) this.sheep(x, z);
   }
 
-  private addBuildingInstance(
-    mesh: THREE.Group,
-    posX: number,
-    posZ: number,
-    rotY: number = 0,
-    width: number = 5.0,
-    depth: number = 6.0
-  ): void {
-    mesh.position.set(posX, 0, posZ);
-    mesh.rotation.y = rotY;
-    this.group.add(mesh);
-
-    const halfW = width / 2;
-    const halfD = depth / 2;
-    const isRotated90 = Math.abs(Math.sin(rotY)) > 0.7;
-    const finalHalfW = isRotated90 ? halfD : halfW;
-    const finalHalfD = isRotated90 ? halfW : halfD;
-
-    this.collisionBoxes.push({
-      minX: posX - finalHalfW,
-      maxX: posX + finalHalfW,
-      minZ: posZ - finalHalfD,
-      maxZ: posZ + finalHalfD,
+  private place(name: string, x: number, z: number, size: number, rotation = 0, solid = false): void {
+    const source = this.assets.get(name) ?? this.assets.get(name.replace(/\./g, ''));
+    if (!source) throw new Error(`Missing village asset: ${name}`);
+    const object = source.clone();
+    object.position.set(0, 0, 0);
+    object.rotation.set(0, 0, 0);
+    object.scale.setScalar(1);
+    const bounds = new THREE.Box3().setFromObject(object);
+    const dimensions = bounds.getSize(new THREE.Vector3());
+    const scale = size / Math.max(dimensions.x, dimensions.y, dimensions.z);
+    const center = bounds.getCenter(new THREE.Vector3());
+    object.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale);
+    object.scale.setScalar(scale);
+    object.traverse(child => {
+      if (child instanceof THREE.Mesh) { child.castShadow = true; child.receiveShadow = true; }
     });
+    const root = new THREE.Group();
+    root.add(object);
+    root.position.set(x, 0.015, z);
+    root.rotation.y = rotation;
+    this.group.add(root);
+    if (solid) {
+      const box = new THREE.Box3().setFromObject(root);
+      this.collisionBoxes.push({ minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z });
+    }
   }
 
-  private buildPronteraPlaza(): void {
-    this.landmarks.push({
-      name: 'Prontera Central Fountain',
-      x: 0,
-      z: 0,
-      type: 'plaza'
-    });
-
-    // 1. Iconic Prontera Central Water Fountain
-    const fountain = LowPolyBuilder.createPronteraFountain();
-    fountain.position.set(0, 0, 0);
-    this.group.add(fountain);
-    this.collisionBoxes.push({
-      minX: -3.8,
-      maxX: 3.8,
-      minZ: -3.8,
-      maxZ: 3.8
-    });
-
-    // 2. Ragnarok Online Vending Carts around the fountain plaza
-    const cart1 = LowPolyBuilder.createVendingCart(LowPolyPalette.cartRed, 'Red Potions & Wings');
-    cart1.position.set(-8, 0, -6);
-    cart1.rotation.y = Math.PI / 4;
-    this.group.add(cart1);
-    this.collisionBoxes.push({ minX: -9.0, maxX: -7.0, minZ: -7.0, maxZ: -5.0 });
-
-    const cart2 = LowPolyBuilder.createVendingCart(LowPolyPalette.cartBlue, '+7 Damascus & Katana');
-    cart2.position.set(8, 0, -6);
-    cart2.rotation.y = -Math.PI / 4;
-    this.group.add(cart2);
-    this.collisionBoxes.push({ minX: 7.0, maxX: 9.0, minZ: -7.0, maxZ: -5.0 });
-
-    const cart3 = LowPolyBuilder.createVendingCart(LowPolyPalette.cartYellow, 'Buying Jellopy 25z');
-    cart3.position.set(-8, 0, 6);
-    cart3.rotation.y = (3 * Math.PI) / 4;
-    this.group.add(cart3);
-    this.collisionBoxes.push({ minX: -9.0, maxX: -7.0, minZ: 5.0, maxZ: 7.0 });
-
-    const cart4 = LowPolyBuilder.createVendingCart(LowPolyPalette.cartRed, 'Santa Hat & Bunny Band');
-    cart4.position.set(8, 0, 6);
-    cart4.rotation.y = -(3 * Math.PI) / 4;
-    this.group.add(cart4);
-    this.collisionBoxes.push({ minX: 7.0, maxX: 9.0, minZ: 5.0, maxZ: 7.0 });
-  }
-
-  private buildWaterCanalAndBridge(): void {
-    // Water Canal along X = 20
-    const canalW = 4.5;
-    const canalL = 90;
-    const water = new THREE.Mesh(new THREE.PlaneGeometry(canalW, canalL), LowPolyPalette.water);
-    water.rotation.x = -Math.PI / 2;
-    water.position.set(20, 0.08, 0);
-    this.group.add(water);
-
-    const bankGeo = new THREE.BoxGeometry(0.6, 0.4, canalL);
-    const leftBank = new THREE.Mesh(bankGeo, LowPolyPalette.fountainMarble);
-    leftBank.position.set(17.8, 0.2, 0);
-    leftBank.castShadow = true;
-    this.group.add(leftBank);
-
-    const rightBank = new THREE.Mesh(bankGeo, LowPolyPalette.fountainMarble);
-    rightBank.position.set(22.2, 0.2, 0);
-    rightBank.castShadow = true;
-    this.group.add(rightBank);
-
-    // Wooden Footbridge crossing canal
-    const bridge = new THREE.Group();
-    bridge.position.set(20, 0, 0);
-
-    const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.25, 3.2), LowPolyPalette.woodPlanks);
-    bridgeDeck.position.y = 0.35;
-    bridgeDeck.castShadow = true;
-    bridgeDeck.receiveShadow = true;
-    bridge.add(bridgeDeck);
-
-    const railGeo = new THREE.BoxGeometry(5.2, 0.8, 0.12);
-    const railL = new THREE.Mesh(railGeo, LowPolyPalette.woodDark);
-    railL.position.set(0, 0.85, -1.5);
-    bridge.add(railL);
-
-    const railR = new THREE.Mesh(railGeo, LowPolyPalette.woodDark);
-    railR.position.set(0, 0.85, 1.5);
-    bridge.add(railR);
-
-    this.group.add(bridge);
-
-    this.collisionBoxes.push({ minX: 18.0, maxX: 22.0, minZ: -45, maxZ: -2.0 });
-    this.collisionBoxes.push({ minX: 18.0, maxX: 22.0, minZ: 2.0, maxZ: 45 });
-  }
-
-  private buildLandmarkBuildings(): void {
-    // Prontera Castle / Grand Hall
-    const castleHall = LowPolyBuilder.createTownHall();
-    this.addBuildingInstance(castleHall, 0, -28, 0, 9.6, 12.0);
-    this.landmarks.push({
-      name: 'Prontera Castle Gate',
-      x: 0,
-      z: -28,
-      type: 'hall'
-    });
-
-    // Prontera Pub & Tavern
-    const tavern = LowPolyBuilder.createTavern();
-    this.addBuildingInstance(tavern, -22, 0, Math.PI / 2, 8.4, 10.0);
-    this.landmarks.push({
-      name: 'Prontera Pub & Inn',
-      x: -22,
-      z: 0,
-      type: 'tavern'
-    });
-  }
-
-  private buildResidentialDistricts(): void {
-    // East Canal Quarter (Weapon & Armor Smithy)
-    const h1 = LowPolyBuilder.createHouseMedium('terracotta');
-    this.addBuildingInstance(h1, 30, -6, -Math.PI / 2, 5.4, 7.0);
-
-    const h2 = LowPolyBuilder.createHouseMedium('green');
-    this.addBuildingInstance(h2, 30, 10, -Math.PI / 2, 5.4, 7.0);
-
-    const c1 = LowPolyBuilder.createCottage('terracotta');
-    this.addBuildingInstance(c1, 40, -12, 0, 4.6, 6.0);
-
-    const c2 = LowPolyBuilder.createCottage('slate');
-    this.addBuildingInstance(c2, 40, 4, 0, 4.6, 6.0);
-
-    // North Quarters
-    const h3 = LowPolyBuilder.createHouseMedium('terracotta');
-    this.addBuildingInstance(h3, 14, -38, Math.PI, 5.4, 7.0);
-
-    const h4 = LowPolyBuilder.createHouseMedium('green');
-    this.addBuildingInstance(h4, -16, -38, Math.PI, 5.4, 7.0);
-
-    const c3 = LowPolyBuilder.createCottage('slate');
-    this.addBuildingInstance(c3, -28, -32, Math.PI / 2, 4.6, 6.0);
-
-    // West Alleys
-    const c4 = LowPolyBuilder.createCottage('terracotta');
-    this.addBuildingInstance(c4, -36, 6, Math.PI / 2, 4.6, 6.0);
-
-    const h5 = LowPolyBuilder.createHouseMedium('terracotta');
-    this.addBuildingInstance(h5, -36, 20, Math.PI / 2, 5.4, 7.0);
-
-    // South Gate District (Road to Poring Field!)
-    const h6 = LowPolyBuilder.createHouseMedium('green');
-    this.addBuildingInstance(h6, -14, 28, 0, 5.4, 7.0);
-
-    const h7 = LowPolyBuilder.createHouseMedium('terracotta');
-    this.addBuildingInstance(h7, 12, 28, 0, 5.4, 7.0);
-
-    const c5 = LowPolyBuilder.createCottage('terracotta');
-    this.addBuildingInstance(c5, -14, 42, 0, 4.6, 6.0);
-
-    const c6 = LowPolyBuilder.createCottage('slate');
-    this.addBuildingInstance(c6, 12, 42, 0, 4.6, 6.0);
-
-    this.landmarks.push({
-      name: 'Prontera South Gate (Poring Field)',
-      x: 0,
-      z: 50,
-      type: 'gate'
-    });
-  }
-
-  private buildStreetLanterns(): void {
-    const lampCoords = [
-      { x: -5, z: -5 },
-      { x: 5, z: -5 },
-      { x: -5, z: 5 },
-      { x: 5, z: 5 },
-      { x: 18, z: -2 },
-      { x: 18, z: 2 },
-      { x: -16, z: 0 },
-      { x: 0, z: -18 },
-    ];
-
-    lampCoords.forEach((coord) => {
-      const lamp = new THREE.Group();
-      lamp.position.set(coord.x, 0, coord.z);
-
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 2.6, 6), LowPolyPalette.fountainMarble);
-      post.position.y = 1.3;
-      post.castShadow = true;
-      lamp.add(post);
-
-      const lanternGlass = new THREE.Mesh(new THREE.DodecahedronGeometry(0.18), LowPolyPalette.lanternGlow);
-      lanternGlass.position.set(0, 2.6, 0);
-      lamp.add(lanternGlass);
-
-      this.group.add(lamp);
-
-      this.collisionBoxes.push({
-        minX: coord.x - 0.4,
-        maxX: coord.x + 0.4,
-        minZ: coord.z - 0.4,
-        maxZ: coord.z + 0.4,
-      });
-    });
-  }
-
-  private buildFoliage(): void {
-    const treeCoords = [
-      { x: -6, z: -62, type: 'pine', s: 1.1 },
-      { x: 6, z: -62, type: 'oak', s: 1.0 },
-      { x: -22, z: -60, type: 'pine', s: 1.2 },
-      { x: -6, z: 62, type: 'oak', s: 1.1 },
-      { x: 6, z: 62, type: 'pine', s: 1.2 },
-      { x: 48, z: -18, type: 'oak', s: 1.1 },
-      { x: 48, z: 8, type: 'pine', s: 1.2 },
-      { x: -48, z: -18, type: 'pine', s: 1.15 },
-      { x: -48, z: 8, type: 'oak', s: 1.05 },
-      { x: -24, z: -8, type: 'oak', s: 0.9 },
-      { x: 26, z: -24, type: 'pine', s: 0.95 },
-    ];
-
-    treeCoords.forEach((tc) => {
-      const tree = LowPolyBuilder.createTree(tc.type as 'pine' | 'oak', tc.s);
-      tree.position.set(tc.x, 0, tc.z);
-      this.group.add(tree);
-
-      this.collisionBoxes.push({
-        minX: tc.x - 0.5 * tc.s,
-        maxX: tc.x + 0.5 * tc.s,
-        minZ: tc.z - 0.5 * tc.s,
-        maxZ: tc.z + 0.5 * tc.s,
-      });
-    });
+  private sheep(x: number, z: number): void {
+    const sheep = new THREE.Group();
+    const wool = new THREE.MeshStandardMaterial({ color: 0xeee7d4, flatShading: true, roughness: 1 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x514838, roughness: 1 });
+    const body = new THREE.Mesh(new THREE.IcosahedronGeometry(0.48, 1), wool);
+    body.scale.set(0.85, 0.85, 1.35); body.position.y = 0.65; sheep.add(body);
+    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.23, 0), dark);
+    head.position.set(0, 0.68, 0.62); sheep.add(head);
+    for (const dx of [-0.24, 0.24]) for (const dz of [-0.32, 0.32]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.4, 5), dark);
+      leg.position.set(dx, 0.22, dz); sheep.add(leg);
+    }
+    sheep.position.set(x, 0, z); sheep.rotation.y = this.random() * 6;
+    sheep.traverse(child => { if (child instanceof THREE.Mesh) child.castShadow = true; });
+    this.group.add(sheep);
   }
 
   public resolveCollision(

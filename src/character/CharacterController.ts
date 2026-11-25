@@ -44,7 +44,7 @@ export class CharacterController implements Updatable {
   public position: THREE.Vector3 = new THREE.Vector3(0, 0, 10);
   private currentSpeed: number = 0;
 
-  public cameraDistance: number = 12.0;
+  public cameraDistance: number = 30.0;
   public cameraYaw: number = 0;
   public readonly cameraPitch: number = 0.65; // Fixed RO1 isometric elevation angle (vertical tilt disabled)
   public facingAngle: number = 0; // World facing angle (0 = South / +Z)
@@ -233,7 +233,7 @@ export class CharacterController implements Updatable {
     ctx.font = 'bold 17px sans-serif';
     ctx.fillStyle = '#fffae0';
     ctx.textAlign = 'center';
-    ctx.fillText('[Lv.99] Novice Traveler', 128, 28);
+    ctx.fillText('[Lv.1] Shepherd', 128, 28);
 
     // Green HP Bar
     ctx.fillStyle = '#1e241c';

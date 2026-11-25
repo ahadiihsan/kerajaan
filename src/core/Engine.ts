@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { DepthOfFieldPass } from './DepthOfFieldPass';
 
@@ -59,6 +60,7 @@ export class Engine {
     this.dofPass = new DepthOfFieldPass();
     this.dofPass.setSize(width, height);
     this.composer.addPass(this.dofPass.pass);
+    this.composer.addPass(new OutputPass());
 
     // 5. Clock
     this.clock = new THREE.Clock();

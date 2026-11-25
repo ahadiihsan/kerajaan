@@ -808,3 +808,9 @@ html, body {
     grid-template-columns: 1fr;
   }
 }
+
+.time-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; color: #eee3c7; font-size: 12px; letter-spacing: normal; }
+.time-controls button { background: #323d49; color: #fff0cb; border: 1px solid #b49c61; border-radius: 4px; padding: 6px 10px; cursor: pointer; }
+.time-controls label { display: flex; align-items: center; gap: 6px; }
+.time-controls input { width: 88px; accent-color: #dfb954; }
+.time-controls :focus-visible { outline: 2px solid #f6d984; outline-offset: 3px; }
