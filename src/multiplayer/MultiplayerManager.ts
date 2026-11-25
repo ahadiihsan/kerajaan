@@ -32,8 +32,19 @@ export class MultiplayerManager {
     }
 
     try {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      let wsUrl: string;
+      const params = new URLSearchParams(window.location.search);
+      const customServer = params.get('server');
+
+      if (customServer) {
+        wsUrl = customServer;
+      } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        // Localhost development: connect to local standalone server (port 3030) or Vite dev server (/ws)
+        wsUrl = `ws://${window.location.hostname}:3030`;
+      } else {
+        // Production (e.g. kerajaan.web.app): connect through Cloudflare Tunnel route
+        wsUrl = 'wss://empire.ahadiihsan.com/ws';
+      }
 
       console.log(`[Multiplayer] Connecting to ${wsUrl}...`);
       this.socket = new WebSocket(wsUrl);

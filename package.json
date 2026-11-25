@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "server": "tsx server/standalone.ts",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
@@ -16,6 +17,7 @@
   "devDependencies": {
     "@types/three": "^0.174.0",
     "@types/ws": "^8.18.2",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.3",
     "vite": "^6.2.0"
   }
