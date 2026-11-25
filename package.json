@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "server": "tsx server/standalone.ts",
+    "generate:atlas": "python3 scripts/generate_character_atlas.py",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
