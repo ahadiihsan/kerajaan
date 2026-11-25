@@ -4,6 +4,7 @@ import { InputManager } from '../character/InputManager';
 import { PlayerCrowd } from '../character/PlayerCrowd';
 import { DepthOfFieldPass } from '../core/DepthOfFieldPass';
 import { MultiplayerManager } from '../multiplayer/MultiplayerManager';
+import { AVAILABLE_CHARACTERS } from '../character/ROCharacterAtlas';
 
 export class HUD {
   private container: HTMLElement;
@@ -25,6 +26,10 @@ export class HUD {
   // RO1 Classic Chat Box
   private chatMessagesEl!: HTMLElement;
   private chatInputEl!: HTMLInputElement;
+
+  // RO1 Prontera Stylist Modal
+  private stylistModal!: HTMLElement;
+  private isStylistOpen: boolean = false;
 
   private townMap: TownMap;
   private player: CharacterController;
@@ -60,6 +65,7 @@ export class HUD {
     this.buildRO1BasicInfoWindow();
     this.buildRO1ChatBox();
     this.buildRO1ActionHotbar();
+    this.buildRO1StylistModal();
     this.buildControlsHint();
     this.setupMultiplayerListeners();
   }
@@ -300,6 +306,7 @@ export class HUD {
     hotbar.innerHTML = `
       <button id="ro-btn-sit" class="ro-action-btn" title="Toggle Sit/Stand (/sit or press X)">🪑 Sit / Stand</button>
       <button id="ro-btn-emote" class="ro-action-btn" title="Emote (/gg)">♥ Emote</button>
+      <button id="ro-btn-stylist" class="ro-action-btn" title="Prontera Stylist: Change Hairstyle & Color">💇 Stylist</button>
       <button id="ro-btn-dof" class="ro-action-btn active" title="Toggle Octopath-style Depth of Field">✨ DoF: ON</button>
       <button id="ro-btn-cam" class="ro-action-btn" title="Reset Camera">🎥 Reset Cam</button>
     `;
@@ -320,6 +327,12 @@ export class HUD {
       }
     });
 
+    const stylistBtn = hotbar.querySelector('#ro-btn-stylist')!;
+    stylistBtn.addEventListener('click', () => {
+      this.toggleStylistModal();
+      stylistBtn.classList.toggle('active', this.isStylistOpen);
+    });
+
     const dofBtn = hotbar.querySelector('#ro-btn-dof')!;
     dofBtn.addEventListener('click', () => {
       if (this.dofPass) {
@@ -334,6 +347,84 @@ export class HUD {
       this.player.cameraDistance = 12.0;
       this.player.cameraYaw = 0;
     });
+  }
+
+  /**
+   * Prontera Stylist Modal: In-game character appearance & hairstyle selector
+   */
+  private buildRO1StylistModal(): void {
+    this.stylistModal = document.createElement('div');
+    this.stylistModal.id = 'ro-stylist-modal';
+    this.stylistModal.className = 'ui-interactive';
+    this.stylistModal.style.display = 'none';
+
+    let cardsHtml = '';
+    for (const char of AVAILABLE_CHARACTERS) {
+      const isSelected = char.id === this.player.characterId;
+      cardsHtml += `
+        <div class="stylist-card ${isSelected ? 'active' : ''}" data-char-id="${char.id}">
+          <div class="stylist-thumb-wrapper">
+            <img class="stylist-thumb" src="${char.thumbUrl}" alt="${char.name}" loading="lazy" />
+          </div>
+          <div class="stylist-card-info">
+            <div class="stylist-name">${char.name}</div>
+            <div class="stylist-meta">${char.hairStyle} · <span class="stylist-color-label">${char.hairColor}</span></div>
+          </div>
+          <div class="stylist-status-badge">${isSelected ? 'Equipped' : 'Select'}</div>
+        </div>
+      `;
+    }
+
+    this.stylistModal.innerHTML = `
+      <div class="stylist-header">
+        <div class="stylist-title">
+          <span class="stylist-icon">💇</span> Prontera Stylist
+        </div>
+        <button id="ro-stylist-close" class="stylist-close-btn" title="Close Dressing Room">✕</button>
+      </div>
+      <div class="stylist-subtitle">Choose your hairstyle &amp; hair color palette:</div>
+      <div class="stylist-grid">
+        ${cardsHtml}
+      </div>
+    `;
+
+    this.container.appendChild(this.stylistModal);
+
+    const closeBtn = this.stylistModal.querySelector('#ro-stylist-close')!;
+    closeBtn.addEventListener('click', () => this.toggleStylistModal(false));
+
+    // Handle card clicks
+    const cards = this.stylistModal.querySelectorAll('.stylist-card');
+    cards.forEach((card) => {
+      card.addEventListener('click', async () => {
+        const charId = card.getAttribute('data-char-id');
+        if (!charId) return;
+
+        // Set player character model
+        await this.player.setCharacter(charId);
+
+        // Update cards UI
+        cards.forEach((c) => {
+          const isThis = c.getAttribute('data-char-id') === charId;
+          c.classList.toggle('active', isThis);
+          const badge = c.querySelector('.stylist-status-badge');
+          if (badge) badge.textContent = isThis ? 'Equipped' : 'Select';
+        });
+
+        // Announce in chat
+        const charInfo = AVAILABLE_CHARACTERS.find((c) => c.id === charId);
+        if (charInfo) {
+          this.appendChatMessage('Stylist', `You styled your hair to ${charInfo.name}!`, false);
+        }
+      });
+    });
+  }
+
+  public toggleStylistModal(force?: boolean): void {
+    this.isStylistOpen = force !== undefined ? force : !this.isStylistOpen;
+    this.stylistModal.style.display = this.isStylistOpen ? 'flex' : 'none';
+    const btn = document.querySelector('#ro-btn-stylist');
+    if (btn) btn.classList.toggle('active', this.isStylistOpen);
   }
 
   private showFloatingEmote(symbol: string): void {
@@ -357,6 +448,7 @@ export class HUD {
       <div class="hint-row"><span class="key">Scroll</span> Zoom In / Out</div>
       <div class="hint-row"><span class="key">X</span> or <span class="key">Insert</span> Toggle Sit (/sit)</div>
       <div class="hint-row"><span class="key">W A S D</span> Keyboard Move</div>
+      <div class="hint-row"><span class="key">💇 Stylist</span> Change Hair &amp; Skin</div>
     `;
     this.container.appendChild(hints);
   }

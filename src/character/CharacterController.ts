@@ -49,10 +49,20 @@ export class CharacterController implements Updatable {
   public readonly cameraPitch: number = 0.65; // Fixed RO1 isometric elevation angle (vertical tilt disabled)
   public facingAngle: number = 0; // World facing angle (0 = South / +Z)
 
+  public characterId: string = ROCharacterAtlas.DEFAULT_CHARACTER;
+  public onCharacterChanged?: (characterId: string) => void;
+
   constructor(camera: THREE.PerspectiveCamera, input: InputManager, townMap: TownMap) {
     this.camera = camera;
     this.input = input;
     this.townMap = townMap;
+
+    try {
+      const savedChar = localStorage.getItem('ro_selected_character');
+      if (savedChar) {
+        this.characterId = savedChar;
+      }
+    } catch (e) {}
 
     this.mesh = new THREE.Group();
     this.mesh.name = 'RO1VolumetricPlayer';
@@ -62,6 +72,23 @@ export class CharacterController implements Updatable {
     this.buildSpeechBubble();
     this.buildClickTargetRipple();
     this.mesh.position.copy(this.position);
+  }
+
+  public async setCharacter(id: string): Promise<void> {
+    this.characterId = id;
+    try {
+      localStorage.setItem('ro_selected_character', id);
+    } catch (e) {}
+    await ROCharacterAtlas.loadCharacter(id);
+    const newTex = ROCharacterAtlas.getTexture(this.dir8Index, this.frameIndex, this.characterId);
+    if (this.spriteMaterial) {
+      this.spriteMaterial.map = newTex;
+      this.spriteMaterial.emissiveMap = newTex;
+      this.spriteMaterial.needsUpdate = true;
+    }
+    if (this.onCharacterChanged) {
+      this.onCharacterChanged(id);
+    }
   }
 
   private buildSpeechBubble(): void {
@@ -171,7 +198,7 @@ export class CharacterController implements Updatable {
     }
     normals.needsUpdate = true;
 
-    const initialTex = ROCharacterAtlas.getTexture(0, 0);
+    const initialTex = ROCharacterAtlas.getTexture(0, 0, this.characterId);
     this.spriteMaterial = new THREE.MeshStandardMaterial({
       map: initialTex,
       emissiveMap: initialTex,
@@ -449,8 +476,8 @@ export class CharacterController implements Updatable {
     this.spriteGroup.rotation.y = this.cameraYaw;
     this.spriteGroup.rotation.x = 0;
 
-    // Update texture from official RO Arch Bishop + Blue Head Atlas
-    const newTex = ROCharacterAtlas.getTexture(this.dir8Index, this.frameIndex);
+    // Update texture from official RO Character Atlas with selected hairstyle
+    const newTex = ROCharacterAtlas.getTexture(this.dir8Index, this.frameIndex, this.characterId);
     if (this.spriteMaterial.map !== newTex) {
       this.spriteMaterial.map = newTex;
       this.spriteMaterial.emissiveMap = newTex;

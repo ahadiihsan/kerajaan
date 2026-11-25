@@ -6,6 +6,7 @@ export class RemotePlayer {
   public id: string;
   public name: string;
   public color: string;
+  public characterId: string;
   public mesh: THREE.Group;
 
   public position: THREE.Vector3;
@@ -33,6 +34,7 @@ export class RemotePlayer {
     this.id = data.id;
     this.name = data.name;
     this.color = data.color || '#2d5f8c';
+    this.characterId = data.characterId || ROCharacterAtlas.DEFAULT_CHARACTER;
 
     this.position = new THREE.Vector3(data.x, 0, data.z);
     this.targetPosition = new THREE.Vector3(data.x, 0, data.z);
@@ -80,7 +82,7 @@ export class RemotePlayer {
     }
     normals.needsUpdate = true;
 
-    const initialTex = ROCharacterAtlas.getTexture(0, 0);
+    const initialTex = ROCharacterAtlas.getTexture(0, 0, this.characterId);
     this.spriteMaterial = new THREE.MeshStandardMaterial({
       map: initialTex,
       emissiveMap: initialTex,
@@ -186,6 +188,20 @@ export class RemotePlayer {
     this.isSitting = data.isSitting;
     this.direction = data.direction;
     this.frameIndex = data.frameIndex;
+    if (data.characterId && data.characterId !== this.characterId) {
+      this.setCharacter(data.characterId);
+    }
+  }
+
+  public async setCharacter(characterId: string): Promise<void> {
+    this.characterId = characterId;
+    await ROCharacterAtlas.loadCharacter(characterId);
+    const tex = ROCharacterAtlas.getTexture(0, this.frameIndex, this.characterId);
+    if (this.spriteMaterial) {
+      this.spriteMaterial.map = tex;
+      this.spriteMaterial.emissiveMap = tex;
+      this.spriteMaterial.needsUpdate = true;
+    }
   }
 
   public update(delta: number, cameraYaw: number): void {
@@ -200,9 +216,9 @@ export class RemotePlayer {
     this.spriteMesh.rotation.y = cameraYaw;
     this.spriteMesh.rotation.x = 0;
 
-    // 4. Update sprite texture from atlas
+    // 4. Update sprite texture from atlas with player's hairstyle
     const frame = this.isSitting ? 9 : (this.isMoving ? (1 + (this.frameIndex % 8)) : 0);
-    const newTex = ROCharacterAtlas.getTexture(dir8, frame);
+    const newTex = ROCharacterAtlas.getTexture(dir8, frame, this.characterId);
     if (this.spriteMaterial.map !== newTex) {
       this.spriteMaterial.map = newTex;
       this.spriteMaterial.emissiveMap = newTex;

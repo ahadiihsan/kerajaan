@@ -23,6 +23,12 @@ export class MultiplayerManager {
   constructor(scene: THREE.Scene, localPlayer: CharacterController) {
     this.scene = scene;
     this.localPlayer = localPlayer;
+
+    // Listen to local character changes to sync with multiplayer peers
+    this.localPlayer.onCharacterChanged = (characterId: string) => {
+      this.sendCharacterChange(characterId);
+    };
+
     this.connect();
   }
 
@@ -52,6 +58,8 @@ export class MultiplayerManager {
       this.socket.onopen = () => {
         console.log('[Multiplayer] 🌐 Connected to Prontera Game Server!');
         this.isConnected = true;
+        // Sync initial character model with server
+        this.sendCharacterChange(this.localPlayer.characterId);
         if (this.onConnectionChange) {
           this.onConnectionChange(true, this.remotePlayers.size + 1);
         }
@@ -152,6 +160,14 @@ export class MultiplayerManager {
         break;
       }
 
+      case 'player_character_changed': {
+        const remote = this.remotePlayers.get(msg.id);
+        if (remote && msg.characterId) {
+          remote.setCharacter(msg.characterId);
+        }
+        break;
+      }
+
       case 'player_chat': {
         const remote = this.remotePlayers.get(msg.id);
         if (remote) {
@@ -206,10 +222,19 @@ export class MultiplayerManager {
       isMoving: (this.localPlayer as any).isMoving ?? false,
       isSitting: this.localPlayer.isSitting,
       direction: (this.localPlayer as any).direction ?? 'down',
-      frameIndex: (this.localPlayer as any).frameIndex ?? 0
+      frameIndex: (this.localPlayer as any).frameIndex ?? 0,
+      characterId: this.localPlayer.characterId
     };
 
     this.socket.send(JSON.stringify(payload));
+  }
+
+  public sendCharacterChange(characterId: string): void {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+    this.socket.send(JSON.stringify({
+      type: 'update_character',
+      characterId: characterId
+    }));
   }
 
   public sendEmote(symbol: string): void {

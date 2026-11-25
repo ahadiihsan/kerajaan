@@ -4,6 +4,7 @@ export interface PlayerData {
   id: string;
   name: string;
   color: string;
+  characterId: string;
   x: number;
   z: number;
   facingAngle: number;
@@ -49,10 +50,25 @@ export class MultiplayerServer {
       const spawnX = Math.cos(angle) * radius;
       const spawnZ = 8.0 + Math.sin(angle) * radius;
 
+      const availableCharacters = [
+        'archbishop_blue_spiky',
+        'archbishop_blonde_spiky',
+        'archbishop_red_spiky',
+        'archbishop_black_long',
+        'archbishop_silver_long',
+        'archbishop_blonde_short',
+        'archbishop_brown_curls',
+        'archbishop_green_wild',
+        'archbishop_pink_casual',
+        'archbishop_purple_royal',
+      ];
+      const assignedChar = availableCharacters[this.nextPlayerNumber % availableCharacters.length];
+
       const newPlayer: PlayerData = {
         id: playerId,
         name: playerName,
         color: theme.color,
+        characterId: assignedChar,
         x: spawnX,
         z: spawnZ,
         facingAngle: 0,
@@ -122,7 +138,19 @@ export class MultiplayerServer {
       player.isSitting = !!msg.isSitting;
       player.direction = msg.direction || player.direction;
       player.frameIndex = msg.frameIndex ?? player.frameIndex;
+      if (msg.characterId) {
+        player.characterId = msg.characterId;
+      }
       player.lastUpdate = Date.now();
+    } else if (msg.type === 'update_character') {
+      if (msg.characterId) {
+        player.characterId = msg.characterId;
+        this.broadcast({
+          type: 'player_character_changed',
+          id: playerId,
+          characterId: msg.characterId
+        });
+      }
     } else if (msg.type === 'emote') {
       // Broadcast emote bubble over player's head
       this.broadcast({
