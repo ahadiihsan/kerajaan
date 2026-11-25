@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Updatable } from '../core/Engine';
-import { TownMap } from '../map/TownMap';
+import { ForestMap, trailX, trailZ } from '../map/ForestMap';
+import { alignToGround, terrainHeight } from '../map/ForestTerrain';
 import { PixelSpriteSheet } from './PixelSpriteSheet';
 
 interface CrowdAgent {
@@ -25,7 +26,7 @@ export class PlayerCrowd implements Updatable {
 
   private agents: CrowdAgent[] = [];
   private dummy: THREE.Object3D = new THREE.Object3D();
-  private townMap: TownMap;
+  private forestMap: ForestMap;
 
   // Ragnarok Online job class color themes (Swordsman, Mage, Archer, Merchant, Thief, Novice)
   private roColors = [
@@ -38,11 +39,11 @@ export class PlayerCrowd implements Updatable {
     new THREE.Color(0x613d6e), // High Wizard purple
   ];
 
-  constructor(townMap: TownMap, initialCount: number = 1000) {
-    this.townMap = townMap;
+  constructor(forestMap: ForestMap, initialCount: number = 1000) {
+    this.forestMap = forestMap;
     this.activeCount = Math.min(initialCount, this.maxCount);
     this.group = new THREE.Group();
-    this.group.name = 'RO1PronteraCrowd';
+    this.group.name = 'ForestVisitors';
 
     this.initInstancedSprites();
     this.spawnAgents();
@@ -60,6 +61,7 @@ export class PlayerCrowd implements Updatable {
     });
     this.shadowMesh = new THREE.InstancedMesh(shadowGeo, shadowMat, this.maxCount);
     this.shadowMesh.count = this.activeCount;
+    this.shadowMesh.frustumCulled = false;
     this.group.add(this.shadowMesh);
 
     // 2. 2D Anime Pixel Billboard Sprites (Lit by scene sun & lanterns)
@@ -90,37 +92,22 @@ export class PlayerCrowd implements Updatable {
     this.spriteMesh.castShadow = false; // Prevents 1,000 overlapping rectangular shadow streaks
     this.spriteMesh.receiveShadow = false;
     this.spriteMesh.count = this.activeCount;
+    this.spriteMesh.frustumCulled = false;
     this.group.add(this.spriteMesh);
   }
 
   private spawnAgents(): void {
     for (let i = 0; i < this.maxCount; i++) {
-      const zone = Math.random();
-      let sx = 0;
-      let sz = 0;
-      let isSitting = false;
-
-      if (zone < 0.55) {
-        // Prontera Central Fountain Square (circle r < 20)
-        const angle = Math.random() * Math.PI * 2;
-        const rad = 4.2 + Math.random() * 15.0;
-        sx = Math.cos(angle) * rad;
-        sz = Math.sin(angle) * rad;
-
-        // In RO1 Prontera, ~45% of fountain crowd sits on the cobblestones!
-        if (Math.random() < 0.42) {
-          isSitting = true;
-        }
-      } else if (zone < 0.8) {
-        // Main South-North Avenue (Castle to South Gate)
-        sx = (Math.random() - 0.5) * 5.2;
-        sz = (Math.random() - 0.5) * 80;
-        if (Math.random() < 0.2) isSitting = true;
+      let sx: number;
+      let sz: number;
+      if (i % 2 === 0) {
+        sz = (Math.random() - 0.5) * 105;
+        sx = trailX(sz) + (Math.random() - 0.5) * 3.4;
       } else {
-        // East Canal & Vending Alley
-        sx = 14 + Math.random() * 18;
-        sz = (Math.random() - 0.5) * 35;
+        sx = (Math.random() - 0.5) * 105;
+        sz = trailZ(sx) + (Math.random() - 0.5) * 3.4;
       }
+      const isSitting = Math.random() < 0.24;
 
       this.agents.push({
         x: sx,
@@ -151,6 +138,7 @@ export class PlayerCrowd implements Updatable {
   }
 
   public update(delta: number, _elapsed: number, cameraYaw: number = 0): void {
+    if (this.activeCount === 0) return;
     const dummy = this.dummy;
     const spriteTilt = 0; // True RO1: Sprites stand vertically upright on the ground plane
 
@@ -180,7 +168,7 @@ export class PlayerCrowd implements Updatable {
           const moveX = (dx / dist) * a.speed * delta;
           const moveZ = (dz / dist) * a.speed * delta;
 
-          const resolved = this.townMap.resolveCollision(a.x, a.z, a.x + moveX, a.z + moveZ, 0.35);
+          const resolved = this.forestMap.resolveCollision(a.x, a.z, a.x + moveX, a.z + moveZ, 0.35);
           if (resolved.collided) {
             a.targetX = a.x + (Math.random() - 0.5) * 20;
             a.targetZ = a.z + (Math.random() - 0.5) * 20;
@@ -196,14 +184,15 @@ export class PlayerCrowd implements Updatable {
       const posY = a.isSitting ? -0.2 : bob; // Lower sprite slightly when seated
 
       // 1. Shadow Disc Matrix
-      dummy.position.set(a.x, 0.02, a.z);
-      dummy.rotation.set(0, 0, 0);
+      const groundY = terrainHeight(a.x, a.z);
+      dummy.position.set(a.x, groundY + 0.028, a.z);
+      alignToGround(dummy, a.x, a.z);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       this.shadowMesh.setMatrixAt(i, dummy.matrix);
 
       // 2. 2D Billboard Sprite Matrix (Camera-synced cylindrical billboarding)
-      dummy.position.set(a.x, posY, a.z);
+      dummy.position.set(a.x, groundY + posY, a.z);
       dummy.rotation.order = 'YXZ';
       dummy.rotation.y = cameraYaw;
       dummy.rotation.x = spriteTilt;

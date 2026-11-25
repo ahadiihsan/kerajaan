@@ -113,7 +113,7 @@ html, body {
 }
 
 /* ==========================================================================
-   Top Location Banner (Prontera)
+   Top Location Banner
    ========================================================================== */
 #location-banner {
   position: absolute;
@@ -145,13 +145,6 @@ html, body {
   letter-spacing: 1.5px;
   text-transform: uppercase;
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
-}
-
-.realm-tag {
-  color: #70a1ff;
-  font-size: 11px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
 }
 
 /* ==========================================================================
@@ -327,13 +320,12 @@ html, body {
 }
 
 /* ==========================================================================
-   Classic RO1 Action Hotbar (Bottom Center)
+   Action Hotbar
    ========================================================================== */
 #ro-action-hotbar {
   position: absolute;
   bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 24px;
   display: flex;
   gap: 8px;
   background: rgba(47, 54, 64, 0.85);
@@ -547,7 +539,7 @@ html, body {
    ========================================================================== */
 #controls-hint {
   position: absolute;
-  top: 90px;
+  top: 172px;
   right: 24px;
   background: rgba(47, 54, 64, 0.82);
   border: 1.5px solid #718093;
@@ -588,6 +580,24 @@ html, body {
 }
 
 @media (max-width: 768px) {
+  #location-banner {
+    top: 116px;
+    right: 10px;
+    left: 190px;
+    padding: 6px 8px;
+    transform: none;
+    transition: none;
+  }
+
+  .banner-ornament {
+    letter-spacing: 1px;
+  }
+
+  .location-name {
+    font-size: 13px;
+    letter-spacing: 0.5px;
+  }
+
   #controls-hint {
     display: none;
   }
@@ -809,8 +819,68 @@ html, body {
   }
 }
 
+.graphics-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #f5f6fa;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.graphics-control select {
+  background: #26332e;
+  border-color: #a8b3aa;
+}
+
+.graphics-control select:focus-visible {
+  outline: 2px solid #fed330;
+  outline-offset: 2px;
+}
+
+@media (max-width: 960px) {
+  #ro-chat-box {
+    bottom: 88px;
+  }
+}
+
+@media (max-width: 640px) {
+  #ro-chat-box {
+    left: 8px;
+    bottom: 117px;
+    max-width: calc(100% - 16px);
+  }
+
+  .ro-chat-messages {
+    height: 72px;
+  }
+
+  #ro-action-hotbar {
+    right: 8px;
+    bottom: 12px;
+    width: max-content;
+    max-width: calc(100% - 16px);
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+    padding: 5px;
+  }
+
+  #ro-action-hotbar .ro-action-btn {
+    padding-inline: 8px;
+    min-height: 36px;
+  }
+}
+
 .time-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; color: #eee3c7; font-size: 12px; letter-spacing: normal; }
 .time-controls button { background: #323d49; color: #fff0cb; border: 1px solid #b49c61; border-radius: 4px; padding: 6px 10px; cursor: pointer; }
 .time-controls label { display: flex; align-items: center; gap: 6px; }
 .time-controls input { width: 88px; accent-color: #dfb954; }
 .time-controls :focus-visible { outline: 2px solid #f6d984; outline-offset: 3px; }
+
+
+@media (max-width: 768px) {
+  #ro-action-hotbar #ro-btn-jump {
+    min-height: 44px;
+  }
+}

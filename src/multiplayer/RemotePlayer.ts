@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ROCharacterAtlas } from '../character/ROCharacterAtlas';
-import { PlayerData } from '../../server/multiplayerServer';
+import type { PlayerData } from '../../server/multiplayerServer';
+import { alignToGround, terrainHeight } from '../map/ForestTerrain';
 
 export class RemotePlayer {
   public id: string;
@@ -11,6 +12,8 @@ export class RemotePlayer {
 
   public position: THREE.Vector3;
   private targetPosition: THREE.Vector3;
+  private jumpHeight: number;
+  private targetJumpHeight: number;
   private facingAngle: number = 0;
   private isMoving: boolean = false;
   private isSitting: boolean = false;
@@ -36,8 +39,9 @@ export class RemotePlayer {
     this.color = data.color || '#2d5f8c';
     this.characterId = data.characterId || ROCharacterAtlas.DEFAULT_CHARACTER;
 
-    this.position = new THREE.Vector3(data.x, 0, data.z);
+    this.jumpHeight = this.targetJumpHeight = this.readJumpHeight(data);
     this.targetPosition = new THREE.Vector3(data.x, 0, data.z);
+    this.position = new THREE.Vector3(data.x, terrainHeight(data.x, data.z) + this.jumpHeight, data.z);
     this.facingAngle = data.facingAngle || 0;
     this.isMoving = !!data.isMoving;
     this.isSitting = !!data.isSitting;
@@ -136,7 +140,7 @@ export class RemotePlayer {
     this.bubbleCtx = this.bubbleCanvas.getContext('2d')!;
     this.bubbleTex = new THREE.CanvasTexture(this.bubbleCanvas);
     this.bubbleTex.colorSpace = THREE.SRGBColorSpace;
-    const bubbleMat = new THREE.SpriteMaterial({ map: this.bubbleTex, transparent: true, opacity: 0 });
+    const bubbleMat = new THREE.SpriteMaterial({ map: this.bubbleTex, transparent: true, depthWrite: false, opacity: 0 });
     this.bubbleSprite = new THREE.Sprite(bubbleMat);
     this.bubbleSprite.scale.set(3.2, 1.2, 1);
     this.bubbleSprite.position.set(0, 3.5, 0);
@@ -175,7 +179,7 @@ export class RemotePlayer {
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
     const sprite = new THREE.Sprite(mat);
     sprite.scale.set(2.4, 0.6, 1);
     return sprite;
@@ -183,6 +187,7 @@ export class RemotePlayer {
 
   public updateState(data: PlayerData): void {
     this.targetPosition.set(data.x, 0, data.z);
+    this.targetJumpHeight = this.readJumpHeight(data);
     this.facingAngle = data.facingAngle;
     this.isMoving = data.isMoving;
     this.isSitting = data.isSitting;
@@ -204,10 +209,21 @@ export class RemotePlayer {
     }
   }
 
+  private readJumpHeight(data: PlayerData): number {
+    const height = data.jumpHeight ?? 0;
+    return Number.isFinite(height) ? THREE.MathUtils.clamp(height, 0, 8) : 0;
+  }
+
   public update(delta: number, cameraYaw: number): void {
     // 1. Smooth position interpolation (Lerp)
-    this.position.lerp(this.targetPosition, Math.min(1.0, delta * 12));
+    const blend = Math.min(1, delta * 12);
+    this.position.x = THREE.MathUtils.lerp(this.position.x, this.targetPosition.x, blend);
+    this.position.z = THREE.MathUtils.lerp(this.position.z, this.targetPosition.z, blend);
+    this.jumpHeight = THREE.MathUtils.lerp(this.jumpHeight, this.targetJumpHeight, blend);
+    this.position.y = terrainHeight(this.position.x, this.position.z) + this.jumpHeight;
     this.mesh.position.copy(this.position);
+    this.shadowDisc.position.y = 0.027 - this.jumpHeight;
+    alignToGround(this.shadowDisc, this.position.x, this.position.z);
 
     // 2. 8-Directional View Index (0..7) relative to camera orbit yaw
     const dir8 = ROCharacterAtlas.calculateDirection8(this.facingAngle, cameraYaw);
@@ -217,7 +233,7 @@ export class RemotePlayer {
     this.spriteMesh.rotation.x = 0;
 
     // 4. Update sprite texture from atlas with player's hairstyle
-    const frame = this.isSitting ? 9 : (this.isMoving ? (1 + (this.frameIndex % 8)) : 0);
+    const frame = this.isSitting ? 9 : (this.isMoving && this.jumpHeight < 0.05 ? (1 + (this.frameIndex % 8)) : 0);
     const newTex = ROCharacterAtlas.getTexture(dir8, frame, this.characterId);
     if (this.spriteMaterial.map !== newTex) {
       this.spriteMaterial.map = newTex;

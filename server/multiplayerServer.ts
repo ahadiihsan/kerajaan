@@ -7,6 +7,7 @@ export interface PlayerData {
   characterId: string;
   x: number;
   z: number;
+  jumpHeight?: number;
   facingAngle: number;
   isMoving: boolean;
   isSitting: boolean;
@@ -44,12 +45,6 @@ export class MultiplayerServer {
       const theme = this.roJobThemes[this.nextPlayerNumber % this.roJobThemes.length];
       const playerName = `${theme.name}_${this.nextPlayerNumber++}`;
 
-      // Spawn in Prontera central plaza with slight random offset
-      const angle = Math.random() * Math.PI * 2;
-      const radius = 2.5 + Math.random() * 5.0;
-      const spawnX = Math.cos(angle) * radius;
-      const spawnZ = 8.0 + Math.sin(angle) * radius;
-
       const availableCharacters = [
         'archbishop_blue_spiky',
         'archbishop_blonde_spiky',
@@ -64,13 +59,16 @@ export class MultiplayerServer {
       ];
       const assignedChar = availableCharacters[this.nextPlayerNumber % availableCharacters.length];
 
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 1.3 + Math.random() * 1.8;
       const newPlayer: PlayerData = {
         id: playerId,
         name: playerName,
         color: theme.color,
         characterId: assignedChar,
-        x: spawnX,
-        z: spawnZ,
+        x: Math.cos(angle) * radius,
+        z: 9.5 + Math.sin(angle) * radius,
+        jumpHeight: 0,
         facingAngle: 0,
         isMoving: false,
         isSitting: false,
@@ -131,8 +129,9 @@ export class MultiplayerServer {
     if (!player) return;
 
     if (msg.type === 'update') {
-      player.x = msg.x ?? player.x;
-      player.z = msg.z ?? player.z;
+      if (Number.isFinite(msg.x)) player.x = msg.x;
+      if (Number.isFinite(msg.z)) player.z = msg.z;
+      player.jumpHeight = Number.isFinite(msg.jumpHeight) ? Math.max(0, Math.min(8, msg.jumpHeight)) : 0;
       player.facingAngle = msg.facingAngle ?? player.facingAngle;
       player.isMoving = !!msg.isMoving;
       player.isSitting = !!msg.isSitting;

@@ -4,6 +4,15 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { DepthOfFieldPass } from './DepthOfFieldPass';
 
+export const GRAPHICS_PRESETS = {
+  performance: { label: 'Performance', pixelRatio: 0.75, maxFps: 30, shadows: false, depthOfField: false },
+  balanced: { label: 'Balanced', pixelRatio: 1, maxFps: 60, shadows: true, depthOfField: false },
+  quality: { label: 'Quality', pixelRatio: 1.5, maxFps: 60, shadows: true, depthOfField: true }
+};
+export type GraphicsPreset = keyof typeof GRAPHICS_PRESETS;
+
+const GRAPHICS_PREFERENCE_KEY = 'kerajaan.graphics.preferred';
+
 export interface Updatable {
   update(delta: number, elapsed: number): void;
 }
@@ -12,11 +21,14 @@ export class Engine {
   public scene: THREE.Scene;
   public camera: THREE.PerspectiveCamera;
   public renderer: THREE.WebGLRenderer;
-  public composer: EffectComposer;
-  public dofPass: DepthOfFieldPass;
-  public clock: THREE.Clock;
+  private postprocessing?: { composer: EffectComposer; depthOfField: DepthOfFieldPass };
+  public graphics: GraphicsPreset = 'balanced';
   private updatables: Updatable[] = [];
-  private isRunning: boolean = false;
+  private isRunning = false;
+  private frameRequest: number | null = null;
+  private lastFrameAt?: number;
+  private nextFrameAt?: number;
+  private elapsed = 0;
   private container: HTMLElement;
 
   constructor(containerId: string = 'app') {
@@ -32,38 +44,27 @@ export class Engine {
     // 2. HD-2D Diorama Camera (Narrow FOV 36 deg for isometric miniature depth)
     const width = this.container.clientWidth || window.innerWidth;
     const height = this.container.clientHeight || window.innerHeight;
-    this.camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 500);
+    this.camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 115);
     this.camera.position.set(0, 11, 15);
     this.camera.lookAt(0, 1.2, 0);
 
     // 3. WebGL Renderer with High-End Lighting & ACES Filmic Tone Mapping
+    const initialGraphics = this.loadGraphics();
     this.renderer = new THREE.WebGLRenderer({
-      powerPreference: 'high-performance',
-      antialias: true,
+      powerPreference: 'low-power',
+      antialias: initialGraphics !== 'performance',
       alpha: false,
     });
-    this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.18;
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.toneMappingExposure = 1.02;
+    // The forest geometry is static. Sprites use their own contact shadows.
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.container.appendChild(this.renderer.domElement);
 
-    // 4. Post-processing Composer with Octopath-style Depth of Field
-    this.composer = new EffectComposer(this.renderer);
-    const renderPass = new RenderPass(this.scene, this.camera);
-    this.composer.addPass(renderPass);
-
-    this.dofPass = new DepthOfFieldPass();
-    this.dofPass.setSize(width, height);
-    this.composer.addPass(this.dofPass.pass);
-    this.composer.addPass(new OutputPass());
-
-    // 5. Clock
-    this.clock = new THREE.Clock();
+    this.applyGraphics(initialGraphics);
 
     // 6. Window Resize Handler
     window.addEventListener('resize', this.onResize.bind(this));
@@ -80,44 +81,114 @@ export class Engine {
     }
   }
 
+  public setGraphics(preset: GraphicsPreset): void {
+    this.applyGraphics(preset);
+    try {
+      localStorage.setItem(GRAPHICS_PREFERENCE_KEY, preset);
+    } catch {
+      // Storage can be unavailable in a private browsing session.
+    }
+  }
+
+  private applyGraphics(preset: GraphicsPreset): void {
+    this.graphics = preset;
+    this.nextFrameAt = undefined;
+    const settings = GRAPHICS_PRESETS[preset];
+    this.renderer.shadowMap.enabled = settings.shadows;
+    this.renderer.shadowMap.needsUpdate = settings.shadows;
+
+    if (settings.depthOfField && !this.postprocessing) {
+      const composer = new EffectComposer(this.renderer);
+      const depthOfField = new DepthOfFieldPass();
+      composer.addPass(new RenderPass(this.scene, this.camera));
+      composer.addPass(depthOfField.pass);
+      composer.addPass(new OutputPass());
+      this.postprocessing = { composer, depthOfField };
+    } else if (!settings.depthOfField && this.postprocessing) {
+      const { composer, depthOfField } = this.postprocessing;
+      depthOfField.pass.dispose();
+      composer.passes.at(-1)?.dispose();
+      composer.dispose();
+      this.postprocessing = undefined;
+    }
+
+    this.onResize();
+  }
+
+  private loadGraphics(): GraphicsPreset {
+    try {
+      const preferred = localStorage.getItem(GRAPHICS_PREFERENCE_KEY);
+      if (preferred && Object.hasOwn(GRAPHICS_PRESETS, preferred)) return preferred as GraphicsPreset;
+      const legacy = localStorage.getItem('kerajaan.graphics');
+      // Older builds wrote Balanced on startup even when the player never selected it.
+      if (legacy === 'performance' || legacy === 'quality') return legacy;
+    } catch {
+      // Storage can be unavailable in a private browsing session.
+    }
+    const { hardwareConcurrency, deviceMemory } = navigator as Navigator & { deviceMemory?: number };
+    const constrained = (hardwareConcurrency > 0 && hardwareConcurrency <= 4) ||
+      (deviceMemory !== undefined && deviceMemory <= 4) ||
+      window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+    return constrained ? 'performance' : 'balanced';
+  }
+
   private onResize(): void {
     const width = this.container.clientWidth || window.innerWidth;
     const height = this.container.clientHeight || window.innerHeight;
+    const pixelRatio = Math.min(window.devicePixelRatio, GRAPHICS_PRESETS[this.graphics].pixelRatio);
 
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    this.renderer.setDrawingBufferSize(width, height, pixelRatio);
+    this.renderer.domElement.style.width = `${width}px`;
+    this.renderer.domElement.style.height = `${height}px`;
 
-    this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
-    this.composer.setSize(width, height);
-    this.dofPass.setSize(width, height);
+    if (this.postprocessing) {
+      const { composer, depthOfField } = this.postprocessing;
+      composer.setPixelRatio(pixelRatio);
+      composer.setSize(width, height);
+      depthOfField.setSize(width * pixelRatio, height * pixelRatio);
+    }
   }
 
   public start(): void {
     if (this.isRunning) return;
     this.isRunning = true;
-    this.clock.start();
-
-    const loop = () => {
-      if (!this.isRunning) return;
-      requestAnimationFrame(loop);
-
-      const delta = Math.min(this.clock.getDelta(), 0.1);
-      const elapsed = this.clock.getElapsedTime();
-
-      for (let i = 0; i < this.updatables.length; i++) {
-        this.updatables[i].update(delta, elapsed);
-      }
-
-      // Render through HD-2D Postprocessing Composer
-      this.composer.render();
-    };
-
-    requestAnimationFrame(loop);
+    document.addEventListener('visibilitychange', this.syncFrameRequest);
+    this.syncFrameRequest();
   }
 
   public stop(): void {
     this.isRunning = false;
+    document.removeEventListener('visibilitychange', this.syncFrameRequest);
+    this.syncFrameRequest();
   }
+
+  private syncFrameRequest = (): void => {
+    if (this.frameRequest !== null) cancelAnimationFrame(this.frameRequest);
+    this.lastFrameAt = this.nextFrameAt = undefined;
+    this.frameRequest = this.isRunning && !document.hidden ? requestAnimationFrame(this.renderFrame) : null;
+  };
+
+  private renderFrame = (now: number): void => {
+    this.frameRequest = null;
+    if (!this.isRunning || document.hidden) return;
+    this.frameRequest = requestAnimationFrame(this.renderFrame);
+
+    const scheduled = this.nextFrameAt ?? now;
+    if (now + 0.75 < scheduled) return;
+
+    const interval = 1000 / GRAPHICS_PRESETS[this.graphics].maxFps;
+    this.nextFrameAt = scheduled + interval * Math.max(1, Math.floor((now - scheduled) / interval) + 1);
+    const delta = Math.min((now - (this.lastFrameAt ?? now)) / 1000, 0.1);
+    this.lastFrameAt = now;
+    this.elapsed += delta;
+
+    for (const item of this.updatables) item.update(delta, this.elapsed);
+    if (this.postprocessing) {
+      this.postprocessing.composer.render(delta);
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
+  };
 }

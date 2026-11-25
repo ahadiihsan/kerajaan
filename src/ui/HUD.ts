@@ -1,9 +1,10 @@
-import { Environment } from '../core/Environment';
-import { TownMap } from '../map/TownMap';
+import { FOREST_LIMIT, FOREST_NAME, ForestMap, trailX, trailZ } from '../map/ForestMap';
+import { hikingTrailDistance, POND, TERRACES } from '../map/ForestTerrain';
+import type { Environment } from '../core/Environment';
 import { CharacterController } from '../character/CharacterController';
 import { InputManager } from '../character/InputManager';
 import { PlayerCrowd } from '../character/PlayerCrowd';
-import { DepthOfFieldPass } from '../core/DepthOfFieldPass';
+import { Engine, GRAPHICS_PRESETS, type GraphicsPreset } from '../core/Engine';
 import { MultiplayerManager } from '../multiplayer/MultiplayerManager';
 import { AVAILABLE_CHARACTERS } from '../character/ROCharacterAtlas';
 
@@ -12,6 +13,8 @@ export class HUD {
   private locationBanner!: HTMLElement;
   private minimapCanvas!: HTMLCanvasElement;
   private minimapCtx!: CanvasRenderingContext2D;
+  private minimapTerrain = document.createElement('canvas');
+  private lastMinimapView = { x: NaN, z: NaN, angle: NaN };
   private loadingOverlay!: HTMLElement;
   private loadingBarFill!: HTMLElement;
   private loadingText!: HTMLElement;
@@ -28,32 +31,35 @@ export class HUD {
   private chatMessagesEl!: HTMLElement;
   private chatInputEl!: HTMLInputElement;
 
-  // RO1 Prontera Stylist Modal
+  // RO1 Stylist Modal
   private stylistModal!: HTMLElement;
   private isStylistOpen: boolean = false;
 
-  private townMap: TownMap;
+  private forestMap: ForestMap;
   private player: CharacterController;
   private input: InputManager;
   private crowd?: PlayerCrowd;
-  private dofPass?: DepthOfFieldPass;
+  private engine: Engine;
   private multiplayer?: MultiplayerManager;
 
-  private currentLocation: string = 'Shepherd’s Clearing';
+  private currentLocation = '';
+  private refreshClock?: () => void;
+  private sitButton!: HTMLButtonElement;
 
   constructor(
-    townMap: TownMap,
+    forestMap: ForestMap,
     player: CharacterController,
     input: InputManager,
+    engine: Engine,
     crowd?: PlayerCrowd,
-    dofPass?: DepthOfFieldPass,
     multiplayer?: MultiplayerManager
   ) {
-    this.townMap = townMap;
+    this.forestMap = forestMap;
     this.player = player;
     this.input = input;
     this.crowd = crowd;
-    this.dofPass = dofPass;
+    this.engine = engine;
+    this.currentLocation = forestMap.landmarks[0].name;
     this.multiplayer = multiplayer;
 
     this.container = document.createElement('div');
@@ -77,12 +83,12 @@ export class HUD {
     this.loadingOverlay.innerHTML = `
       <div class="loading-card">
         <div class="heraldry-icon">⚔️</div>
-        <h1 class="title">Kerajaan</h1>
-        <p class="subtitle">A small flock. A forest. The beginning of your kingdom.</p>
+        <h1 class="title">Ragnarok Online</h1>
+        <p class="subtitle">Entering ${FOREST_NAME}…</p>
         <div class="progress-bar-track">
           <div id="progress-bar-fill" class="progress-bar-fill"></div>
         </div>
-        <div id="loading-asset-text" class="asset-text">Loading woodland assets...</div>
+        <div id="loading-asset-text" class="asset-text">Loading forest…</div>
       </div>
     `;
     this.container.appendChild(this.loadingOverlay);
@@ -97,7 +103,7 @@ export class HUD {
       this.loadingBarFill.style.width = `${pct}%`;
     }
     if (this.loadingText) {
-      this.loadingText.textContent = `Connecting: ${name}...`;
+      this.loadingText.textContent = `Loading ${name}…`;
     }
   }
 
@@ -114,9 +120,8 @@ export class HUD {
     this.locationBanner = document.createElement('div');
     this.locationBanner.id = 'location-banner';
     this.locationBanner.innerHTML = `
-      <div class="banner-ornament">A Kingdom Begins</div>
-      <div id="location-name" class="location-name">Shepherd’s Clearing</div>
-      <div class="realm-tag">Chapter I · The Shepherd</div>
+      <div class="banner-ornament">${FOREST_NAME}</div>
+      <div id="location-name" class="location-name">${this.currentLocation}</div>
     `;
     this.container.appendChild(this.locationBanner);
   }
@@ -135,6 +140,7 @@ export class HUD {
 
     this.minimapCanvas = minimapWrap.querySelector('#minimap-canvas')!;
     this.minimapCtx = this.minimapCanvas.getContext('2d')!;
+    this.buildMinimapTerrain();
   }
 
   /**
@@ -176,23 +182,25 @@ export class HUD {
         <div class="ro-server-status">
           <div class="ro-status-row">
             <span class="ro-dot"></span>
-            <span class="ro-status-text">Realm: The Woodland</span>
+            <span class="ro-status-text">Server: Alderwood 01</span>
           </div>
           <div class="ro-status-row">
             <span class="ro-dot online-dot" id="mp-dot"></span>
             <span id="mp-status" class="ro-status-text">Multiplayer: Online (1)</span>
           </div>
           <div class="ro-stats-row">
-            <span id="fps-value" class="ro-fps">75 FPS</span>
-            <span id="crowd-value" class="ro-crowd">Quiet homestead</span>
+            <span id="fps-value" class="ro-fps">— FPS</span>
+            <span id="crowd-value" class="ro-crowd">${this.crowd?.activeCount ?? 0} visitors</span>
           </div>
         </div>
 
         <!-- Crowd Density Preset Buttons -->
-        <div class="crowd-presets">
-          <button class="preset-btn active" data-count="0">Quiet</button>
-          <button class="preset-btn" data-count="10">10</button>
-          <button class="preset-btn" data-count="30">30</button>
+        <div class="crowd-presets" role="group" aria-label="Simulated visitor count">
+          <button class="preset-btn active" data-count="0">0</button>
+          <button class="preset-btn" data-count="24">24</button>
+          <button class="preset-btn" data-count="100">100</button>
+          <button class="preset-btn" data-count="500">500</button>
+          <button class="preset-btn" data-count="1000">1,000</button>
         </div>
       </div>
     `;
@@ -211,7 +219,7 @@ export class HUD {
 
         if (this.crowd) {
           this.crowd.setCrowdCount(count);
-          this.crowdCountDisplay.textContent = `${count.toLocaleString()} Players`;
+          this.crowdCountDisplay.textContent = `${count.toLocaleString()} visitors`;
         }
       });
     });
@@ -227,7 +235,7 @@ export class HUD {
     chatBox.className = 'ui-interactive';
     chatBox.innerHTML = `
       <div id="ro-chat-messages" class="ro-chat-messages">
-        <div class="chat-msg system">Welcome home. Your kingdom begins in a quiet forest clearing.</div>
+        <div class="chat-msg system">Welcome to ${FOREST_NAME}.</div>
         <div class="chat-msg system">💬 Type below or press Enter to chat with connected players.</div>
       </div>
       <form id="ro-chat-form" class="ro-chat-form">
@@ -305,19 +313,24 @@ export class HUD {
     hotbar.id = 'ro-action-hotbar';
     hotbar.className = 'ui-interactive';
     hotbar.innerHTML = `
-      <button id="ro-btn-sit" class="ro-action-btn" title="Toggle Sit/Stand (/sit or press X)">🪑 Sit / Stand</button>
+      <button id="ro-btn-sit" class="ro-action-btn" aria-pressed="false" title="Toggle Sit/Stand (/sit or press X)">🪑 Sit / Stand</button>
+      <button id="ro-btn-jump" class="ro-action-btn" type="button" title="Jump (Space)">Jump</button>
       <button id="ro-btn-emote" class="ro-action-btn" title="Emote (/gg)">♥ Emote</button>
-      <button id="ro-btn-stylist" class="ro-action-btn" title="Prontera Stylist: Change Hairstyle & Color">💇 Stylist</button>
-      <button id="ro-btn-dof" class="ro-action-btn active" title="Toggle Octopath-style Depth of Field">✨ DoF: ON</button>
+      <button id="ro-btn-stylist" class="ro-action-btn" title="Stylist: Change Hairstyle & Color">💇 Stylist</button>
+      <label class="graphics-control">
+        Graphics
+        <select class="ro-action-btn" id="graphics-preset">
+          ${Object.entries(GRAPHICS_PRESETS).map(([value, preset]) =>
+            `<option value="${value}">${preset.label}</option>`).join('')}
+        </select>
+      </label>
       <button id="ro-btn-cam" class="ro-action-btn" title="Reset Camera">🎥 Reset Cam</button>
     `;
     this.container.appendChild(hotbar);
 
-    const sitBtn = hotbar.querySelector('#ro-btn-sit')!;
-    sitBtn.addEventListener('click', () => {
-      this.player.isSitting = !this.player.isSitting;
-      sitBtn.classList.toggle('active', this.player.isSitting);
-    });
+    this.sitButton = hotbar.querySelector('#ro-btn-sit')!;
+    this.sitButton.addEventListener('click', () => { this.input.state.toggleSit = true; });
+    hotbar.querySelector('#ro-btn-jump')!.addEventListener('click', () => { this.input.state.jump = true; });
 
     const emoteBtn = hotbar.querySelector('#ro-btn-emote')!;
     emoteBtn.addEventListener('click', () => {
@@ -334,24 +347,18 @@ export class HUD {
       stylistBtn.classList.toggle('active', this.isStylistOpen);
     });
 
-    const dofBtn = hotbar.querySelector('#ro-btn-dof')!;
-    dofBtn.addEventListener('click', () => {
-      if (this.dofPass) {
-        const enabled = this.dofPass.toggle();
-        dofBtn.classList.toggle('active', enabled);
-        dofBtn.innerHTML = enabled ? '✨ DoF: ON' : '✨ DoF: OFF';
-      }
-    });
+    const graphics = hotbar.querySelector<HTMLSelectElement>('#graphics-preset')!;
+    graphics.value = this.engine.graphics;
+    graphics.addEventListener('change', () => this.engine.setGraphics(graphics.value as GraphicsPreset));
 
     const camBtn = hotbar.querySelector('#ro-btn-cam')!;
     camBtn.addEventListener('click', () => {
-      this.player.cameraDistance = 30.0;
-      this.player.cameraYaw = 0;
+      this.player.resetCamera();
     });
   }
 
   /**
-   * Prontera Stylist Modal: In-game character appearance & hairstyle selector
+   * Stylist Modal: In-game character appearance & hairstyle selector
    */
   private buildRO1StylistModal(): void {
     this.stylistModal = document.createElement('div');
@@ -379,7 +386,7 @@ export class HUD {
     this.stylistModal.innerHTML = `
       <div class="stylist-header">
         <div class="stylist-title">
-          <span class="stylist-icon">💇</span> Prontera Stylist
+          <span class="stylist-icon">💇</span> Stylist
         </div>
         <button id="ro-stylist-close" class="stylist-close-btn" title="Close Dressing Room">✕</button>
       </div>
@@ -448,7 +455,8 @@ export class HUD {
       <div class="hint-row"><span class="key">Right Click Drag</span> Rotate Camera Orbit</div>
       <div class="hint-row"><span class="key">Scroll</span> Zoom In / Out</div>
       <div class="hint-row"><span class="key">X</span> or <span class="key">Insert</span> Toggle Sit (/sit)</div>
-      <div class="hint-row"><span class="key">W A S D</span> Keyboard Move</div>
+      <div class="hint-row"><span class="key">W A S D</span> Walk and hike trails</div>
+      <div class="hint-row"><span class="key">Space</span> Jump</div>
       <div class="hint-row"><span class="key">💇 Stylist</span> Change Hair &amp; Skin</div>
     `;
     this.container.appendChild(hints);
@@ -472,7 +480,10 @@ export class HUD {
       pause.textContent = environment.paused ? 'Resume' : 'Pause';
       pause.setAttribute('aria-label', environment.paused ? 'Resume game time' : 'Pause game time');
     });
-    slider.addEventListener('input', () => { environment.hour = Number(slider.value); environment.update(0); });
+    slider.addEventListener('input', () => {
+      environment.hour = Number(slider.value);
+      environment.update(0);
+    });
     const refresh = () => {
       const minutes = Math.floor(environment.hour * 60);
       const text = `Day ${environment.day} · ${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')} · ${environment.phase}`;
@@ -483,10 +494,13 @@ export class HUD {
     refresh();
   }
 
-  private refreshClock?: () => void;
-
   public update(): void {
     this.refreshClock?.();
+    const sitting = String(this.player.isSitting);
+    if (this.sitButton.getAttribute('aria-pressed') !== sitting) {
+      this.sitButton.setAttribute('aria-pressed', sitting);
+      this.sitButton.classList.toggle('active', this.player.isSitting);
+    }
     this.updateFps();
     this.updateLocation();
     this.drawMinimap();
@@ -512,20 +526,20 @@ export class HUD {
     const px = this.player.position.x;
     const pz = this.player.position.z;
 
-    let closest = this.townMap.landmarks[0];
-    let minDist = 9999;
+    let closest = this.forestMap.landmarks[0];
+    let minDist = Infinity;
 
-    for (const lm of this.townMap.landmarks) {
+    for (const lm of this.forestMap.landmarks) {
       const dx = px - lm.x;
       const dz = pz - lm.z;
-      const d = Math.sqrt(dx * dx + dz * dz);
+      const d = dx * dx + dz * dz;
       if (d < minDist) {
         minDist = d;
         closest = lm;
       }
     }
 
-    const newLoc = minDist < 24 ? closest.name : 'The Deep Woods';
+    const newLoc = minDist < 24 ** 2 ? closest.name : FOREST_NAME;
     if (newLoc !== this.currentLocation) {
       this.currentLocation = newLoc;
       const el = document.getElementById('location-name');
@@ -538,50 +552,74 @@ export class HUD {
     }
   }
 
+  private buildMinimapTerrain(): void {
+    const radius = FOREST_LIMIT + 4;
+    const canvas = this.minimapTerrain;
+    canvas.width = canvas.height = radius * 2;
+    const ctx = canvas.getContext('2d')!;
+    ctx.translate(radius, radius);
+    ctx.fillStyle = '#354632';
+    ctx.fillRect(-FOREST_LIMIT, -FOREST_LIMIT, FOREST_LIMIT * 2, FOREST_LIMIT * 2);
+    ctx.fillStyle = '#1a3226';
+    for (const box of this.forestMap.collisionBoxes) {
+      ctx.fillRect(box.minX - 0.6, box.minZ - 0.6, box.maxX - box.minX + 1.2, box.maxZ - box.minZ + 1.2);
+    }
+
+    for (const area of [POND, ...TERRACES]) {
+      ctx.fillStyle = area === POND ? '#367a82' : '#526e3d';
+      ctx.beginPath();
+      const scale = area === POND ? 0.79 : 1;
+      ctx.ellipse(area.x, area.z, area.rx * scale, area.rz * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = '#a28a61';
+    for (let z = -FOREST_LIMIT; z <= FOREST_LIMIT; z++) {
+      for (let x = -FOREST_LIMIT; x <= FOREST_LIMIT; x++) {
+        if (hikingTrailDistance(x, z) < 1.05) ctx.fillRect(x - 0.5, z - 0.5, 1, 1);
+      }
+    }
+
+    ctx.strokeStyle = '#a28a61';
+    ctx.lineWidth = 4.5;
+    ctx.beginPath();
+    ctx.moveTo(trailX(-FOREST_LIMIT), -FOREST_LIMIT);
+    for (let z = -FOREST_LIMIT + 1; z <= FOREST_LIMIT; z++) ctx.lineTo(trailX(z), z);
+    ctx.moveTo(-FOREST_LIMIT, trailZ(-FOREST_LIMIT));
+    for (let x = -FOREST_LIMIT + 1; x <= FOREST_LIMIT; x++) ctx.lineTo(x, trailZ(x));
+    ctx.stroke();
+
+    ctx.fillStyle = '#d7b984';
+    for (const landmark of this.forestMap.landmarks) {
+      ctx.beginPath();
+      ctx.arc(landmark.x, landmark.z, 2.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
   private drawMinimap(): void {
+    const { x, z } = this.player.position;
+    const angle = this.player.mesh.rotation.y;
+    const previous = this.lastMinimapView;
+    if (x === previous.x && z === previous.z && angle === previous.angle) return;
+    previous.x = x;
+    previous.z = z;
+    previous.angle = angle;
+
     const ctx = this.minimapCtx;
     const width = this.minimapCanvas.width;
     const height = this.minimapCanvas.height;
     const centerX = width / 2;
     const centerY = height / 2;
-    const scale = 1.0;
+    const terrain = this.minimapTerrain;
 
     ctx.fillStyle = '#1e241d';
     ctx.fillRect(0, 0, width, height);
-
     ctx.save();
     ctx.beginPath();
     ctx.arc(centerX, centerY, width / 2 - 4, 0, Math.PI * 2);
     ctx.clip();
-
-    ctx.fillStyle = '#2c3b28';
-    ctx.fill();
-
-    const px = this.player.position.x;
-    const pz = this.player.position.z;
-
-    // The minimap uses the same tree positions and footprints as the world.
-    ctx.strokeStyle = '#9b8860';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let z = -75; z <= 75; z += 2) {
-      const x = Math.sin(z * 0.065) * 5;
-      if (z === -75) ctx.moveTo(centerX + x - px, centerY + z - pz);
-      else ctx.lineTo(centerX + x - px, centerY + z - pz);
-    }
-    ctx.stroke();
-    ctx.fillStyle = '#426743';
-    for (const tree of this.townMap.trees) {
-      ctx.beginPath();
-      ctx.arc(centerX + tree.x - px, centerY + tree.z - pz, tree.radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.fillStyle = '#b18e60';
-    for (const box of this.townMap.collisionBoxes) {
-      if (box.maxX - box.minX < 1) continue;
-      ctx.fillRect(centerX + (box.minX - px) * scale, centerY + (box.minZ - pz) * scale,
-        (box.maxX - box.minX) * scale, (box.maxZ - box.minZ) * scale);
-    }
+    ctx.drawImage(terrain, centerX - terrain.width / 2 - x, centerY - terrain.height / 2 - z);
 
     // Player
     ctx.fillStyle = '#00e5ff';
@@ -589,15 +627,14 @@ export class HUD {
     ctx.arc(centerX, centerY, 4.5, 0, Math.PI * 2);
     ctx.fill();
 
-    const facingAngle = this.player.mesh.rotation.y;
     const coneLen = 11;
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(centerX, centerY);
     ctx.lineTo(
-      centerX + Math.sin(facingAngle) * coneLen,
-      centerY + Math.cos(facingAngle) * coneLen
+      centerX + Math.sin(angle) * coneLen,
+      centerY + Math.cos(angle) * coneLen
     );
     ctx.stroke();
 

@@ -9,6 +9,7 @@ export interface InputState {
   zoomDelta: number;
   clickMoveTarget: THREE.Vector3 | null;
   toggleSit: boolean;
+  jump: boolean;
 }
 
 export class InputManager {
@@ -21,6 +22,7 @@ export class InputManager {
     zoomDelta: 0,
     clickMoveTarget: null,
     toggleSit: false,
+    jump: false,
   };
 
   private keys: { [key: string]: boolean } = {};
@@ -33,7 +35,9 @@ export class InputManager {
   private raycaster: THREE.Raycaster = new THREE.Raycaster();
   private mousePos: THREE.Vector2 = new THREE.Vector2();
   private camera!: THREE.Camera;
-  private groundMesh!: THREE.Mesh;
+  private ground!: THREE.Group;
+  private groundClickPending = false;
+  private groundLimit = 0;
 
   // Touch controls
   public isTouchDevice: boolean = false;
@@ -46,9 +50,10 @@ export class InputManager {
     this.setupMouseListeners();
   }
 
-  public initRaycaster(camera: THREE.Camera, groundMesh: THREE.Mesh): void {
+  public initRaycaster(camera: THREE.Camera, ground: THREE.Group, groundLimit: number): void {
     this.camera = camera;
-    this.groundMesh = groundMesh;
+    this.ground = ground;
+    this.groundLimit = groundLimit;
   }
 
   private detectTouch(): void {
@@ -57,6 +62,12 @@ export class InputManager {
 
   private setupKeyboardListeners(): void {
     window.addEventListener('keydown', (e) => {
+      if ((e.target as HTMLElement | null)?.closest('input, textarea, select, button, [contenteditable]')) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (!e.repeat) this.state.jump = true;
+        return;
+      }
       this.keys[e.code] = true;
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
         this.state.isSprinting = true;
@@ -64,6 +75,13 @@ export class InputManager {
       if (e.code === 'Insert' || e.code === 'KeyX') {
         this.state.toggleSit = true;
       }
+    });
+
+    window.addEventListener('blur', () => {
+      this.keys = {};
+      this.state.isSprinting = false;
+      this.isLeftMouseDown = this.isRightMouseDown = false;
+      this.groundClickPending = false;
     });
 
     window.addEventListener('keyup', (e) => {
@@ -84,7 +102,7 @@ export class InputManager {
       if (e.button === 0) {
         // Left Click: Ragnarok Online Click-to-Move!
         this.isLeftMouseDown = true;
-        this.castGroundClick(e.clientX, e.clientY);
+        this.queueGroundClick(e.clientX, e.clientY);
       } else if (e.button === 2) {
         // Right Click: Ragnarok Online Camera Rotation!
         this.isRightMouseDown = true;
@@ -106,7 +124,7 @@ export class InputManager {
 
       if (this.isLeftMouseDown) {
         // Continuous click-to-move dragging while holding left mouse
-        this.castGroundClick(e.clientX, e.clientY);
+        this.queueGroundClick(e.clientX, e.clientY);
       }
     });
 
@@ -120,7 +138,7 @@ export class InputManager {
       if (e.touches.length === 1) {
         const t = e.touches[0];
         if (!(e.target as HTMLElement)?.closest('.ui-interactive')) {
-          this.castGroundClick(t.clientX, t.clientY);
+          this.queueGroundClick(t.clientX, t.clientY);
         }
       }
     }, { passive: true });
@@ -130,17 +148,18 @@ export class InputManager {
     }, { passive: true });
   }
 
-  private castGroundClick(clientX: number, clientY: number): void {
-    if (!this.camera || !this.groundMesh) return;
+  private queueGroundClick(clientX: number, clientY: number): void {
+    this.mousePos.set((clientX / window.innerWidth) * 2 - 1, 1 - (clientY / window.innerHeight) * 2);
+    this.groundClickPending = true;
+  }
 
-    this.mousePos.x = (clientX / window.innerWidth) * 2 - 1;
-    this.mousePos.y = -(clientY / window.innerHeight) * 2 + 1;
-
+  private castGroundClick(): void {
+    if (!this.camera) return;
     this.raycaster.setFromCamera(this.mousePos, this.camera);
-    const intersects = this.raycaster.intersectObject(this.groundMesh);
+    const ground = this.raycaster.intersectObjects(this.ground.children, false)[0]?.point;
 
-    if (intersects.length > 0) {
-      this.state.clickMoveTarget = intersects[0].point.clone();
+    if (ground && Math.abs(ground.x) <= this.groundLimit && Math.abs(ground.z) <= this.groundLimit) {
+      this.state.clickMoveTarget = ground;
       // Any manual click clears sitting state
       this.state.toggleSit = false;
     }
@@ -152,6 +171,10 @@ export class InputManager {
   }
 
   public update(): void {
+    if (this.groundClickPending) {
+      this.groundClickPending = false;
+      this.castGroundClick();
+    }
     // Keyboard WASD overrides click-to-move if keys are pressed
     let x = 0;
     let z = 0;

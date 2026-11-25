@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RemotePlayer } from './RemotePlayer';
-import { PlayerData } from '../../server/multiplayerServer';
+import type { PlayerData } from '../../server/multiplayerServer';
 import { CharacterController } from '../character/CharacterController';
 
 export class MultiplayerManager {
@@ -44,9 +44,9 @@ export class MultiplayerManager {
 
       if (customServer) {
         wsUrl = customServer;
-      } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        // Localhost development: connect to local standalone server (port 3030) or Vite dev server (/ws)
-        wsUrl = `ws://${window.location.hostname}:3030`;
+      } else if (import.meta.env.DEV) {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        wsUrl = `${protocol}//${window.location.host}/ws`;
       } else {
         // Production (e.g. kerajaan.web.app): connect through Cloudflare Tunnel route
         wsUrl = 'wss://empire.ahadiihsan.com/ws';
@@ -56,7 +56,7 @@ export class MultiplayerManager {
       this.socket = new WebSocket(wsUrl);
 
       this.socket.onopen = () => {
-        console.log('[Multiplayer] 🌐 Connected to Prontera Game Server!');
+        console.log('[Multiplayer] 🌐 Connected to the game server');
         this.isConnected = true;
         // Sync initial character model with server
         this.sendCharacterChange(this.localPlayer.characterId);
@@ -95,6 +95,9 @@ export class MultiplayerManager {
   private handleServerMessage(msg: any): void {
     switch (msg.type) {
       case 'welcome': {
+        if (this.localId === null && msg.player) {
+          this.localPlayer.setInitialSpawn(msg.player.x, msg.player.z);
+        }
         this.localId = msg.id;
         if (msg.player && msg.player.name) {
           this.localName = msg.player.name;
@@ -218,6 +221,7 @@ export class MultiplayerManager {
       type: 'update',
       x: parseFloat(this.localPlayer.position.x.toFixed(2)),
       z: parseFloat(this.localPlayer.position.z.toFixed(2)),
+      jumpHeight: parseFloat(this.localPlayer.jumpHeight.toFixed(3)),
       facingAngle: parseFloat(this.localPlayer.facingAngle.toFixed(3)),
       isMoving: (this.localPlayer as any).isMoving ?? false,
       isSitting: this.localPlayer.isSitting,

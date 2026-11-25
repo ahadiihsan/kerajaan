@@ -5,12 +5,11 @@ export const TiltShiftDoFShader = {
   name: 'TiltShiftDoFShader',
   uniforms: {
     tDiffuse: { value: null },
-    resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+    resolution: { value: new THREE.Vector2(1, 1) },
     focusY: { value: 0.50 },
     focusRange: { value: 0.28 },
     blurAmount: { value: 3.2 },
-    bokehGain: { value: 1.15 },
-    enabled: { value: 1.0 }
+    bokehGain: { value: 1.15 }
   },
   vertexShader: `
     varying vec2 vUv;
@@ -26,15 +25,9 @@ export const TiltShiftDoFShader = {
     uniform float focusRange;
     uniform float blurAmount;
     uniform float bokehGain;
-    uniform float enabled;
     varying vec2 vUv;
 
     void main() {
-      if (enabled < 0.5) {
-        gl_FragColor = texture2D(tDiffuse, vUv);
-        return;
-      }
-
       // Calculate distance from horizontal focal line
       float distFromFocus = abs(vUv.y - focusY);
 
@@ -91,29 +84,12 @@ export const TiltShiftDoFShader = {
 
 export class DepthOfFieldPass {
   public pass: ShaderPass;
-  public isEnabled: boolean = true;
 
   constructor() {
     this.pass = new ShaderPass(TiltShiftDoFShader);
-    this.pass.renderToScreen = true;
   }
 
   public setSize(width: number, height: number): void {
     this.pass.uniforms.resolution.value.set(width, height);
-  }
-
-  public setFocusY(y: number): void {
-    this.pass.uniforms.focusY.value = THREE.MathUtils.clamp(y, 0.1, 0.9);
-  }
-
-  public toggle(): boolean {
-    this.isEnabled = !this.isEnabled;
-    this.pass.uniforms.enabled.value = this.isEnabled ? 1.0 : 0.0;
-    return this.isEnabled;
-  }
-
-  public setEnabled(enabled: boolean): void {
-    this.isEnabled = enabled;
-    this.pass.uniforms.enabled.value = enabled ? 1.0 : 0.0;
   }
 }

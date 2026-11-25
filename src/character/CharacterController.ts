@@ -1,14 +1,20 @@
 import * as THREE from 'three';
 import { Updatable } from '../core/Engine';
 import { InputManager } from './InputManager';
-import { TownMap } from '../map/TownMap';
+import { ForestMap } from '../map/ForestMap';
+import { alignToGround, MAX_HIKE_GRADE, terrainHeight } from '../map/ForestTerrain';
 import { ROCharacterAtlas } from './ROCharacterAtlas';
+
+const DEFAULT_CAMERA_DISTANCE = 24;
+const OFFLINE_SPAWN = new THREE.Vector3(0, 0, 10);
+const GRAVITY = 20;
+const JUMP_SPEED = 8.8;
 
 export class CharacterController implements Updatable {
   public mesh: THREE.Group;
   public camera: THREE.PerspectiveCamera;
   private input: InputManager;
-  private townMap: TownMap;
+  private forestMap: ForestMap;
 
   // Ragnarok Online Official Sprite Mesh (Arch Bishop + Blue Hair)
   private spriteGroup!: THREE.Group;
@@ -41,21 +47,28 @@ export class CharacterController implements Updatable {
 
   public walkSpeed: number = 5.4;
   public runSpeed: number = 8.5;
-  public position: THREE.Vector3 = new THREE.Vector3(0, 0, 10);
+  public position = OFFLINE_SPAWN.clone();
   private currentSpeed: number = 0;
+  private verticalVelocity = 0;
+  private grounded = true;
+  private cameraGroundY = 0;
 
-  public cameraDistance: number = 30.0;
+  public get jumpHeight(): number {
+    return Math.max(0, this.position.y - terrainHeight(this.position.x, this.position.z));
+  }
+
+  public cameraDistance = DEFAULT_CAMERA_DISTANCE;
   public cameraYaw: number = 0;
-  public readonly cameraPitch: number = 0.65; // Fixed RO1 isometric elevation angle (vertical tilt disabled)
+  public readonly cameraPitch: number = 0.56; // Fixed RO1 isometric elevation angle (vertical tilt disabled)
   public facingAngle: number = 0; // World facing angle (0 = South / +Z)
 
   public characterId: string = ROCharacterAtlas.DEFAULT_CHARACTER;
   public onCharacterChanged?: (characterId: string) => void;
 
-  constructor(camera: THREE.PerspectiveCamera, input: InputManager, townMap: TownMap) {
+  constructor(camera: THREE.PerspectiveCamera, input: InputManager, forestMap: ForestMap) {
     this.camera = camera;
     this.input = input;
-    this.townMap = townMap;
+    this.forestMap = forestMap;
 
     try {
       const savedChar = localStorage.getItem('ro_selected_character');
@@ -72,6 +85,12 @@ export class CharacterController implements Updatable {
     this.buildSpeechBubble();
     this.buildClickTargetRipple();
     this.mesh.position.copy(this.position);
+  }
+
+  public setInitialSpawn(x: number, z: number): void {
+    if (!this.position.equals(OFFLINE_SPAWN) || !Number.isFinite(x) || !Number.isFinite(z)) return;
+    const spawn = this.forestMap.resolveCollision(this.position.x, this.position.z, x, z);
+    this.position.set(spawn.x, terrainHeight(spawn.x, spawn.z), spawn.z);
   }
 
   public async setCharacter(id: string): Promise<void> {
@@ -98,7 +117,7 @@ export class CharacterController implements Updatable {
     this.bubbleCtx = this.bubbleCanvas.getContext('2d')!;
     this.bubbleTex = new THREE.CanvasTexture(this.bubbleCanvas);
     this.bubbleTex.colorSpace = THREE.SRGBColorSpace;
-    const bubbleMat = new THREE.SpriteMaterial({ map: this.bubbleTex, transparent: true, opacity: 0 });
+    const bubbleMat = new THREE.SpriteMaterial({ map: this.bubbleTex, transparent: true, depthWrite: false, opacity: 0 });
     this.bubbleSprite = new THREE.Sprite(bubbleMat);
     this.bubbleSprite.scale.set(3.2, 1.2, 1);
     this.bubbleSprite.position.set(0, 3.5, 0);
@@ -245,7 +264,7 @@ export class CharacterController implements Updatable {
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
     this.nametagSprite = new THREE.Sprite(mat);
     this.nametagSprite.position.set(0, 2.7, 0);
     this.nametagSprite.scale.set(2.4, 0.6, 1);
@@ -363,8 +382,10 @@ export class CharacterController implements Updatable {
     // Sitting state
     if (this.input.state.toggleSit) {
       this.input.state.toggleSit = false;
-      this.isSitting = !this.isSitting;
-      this.targetDestination = null;
+      if (this.grounded) {
+        this.isSitting = !this.isSitting;
+        this.targetDestination = null;
+      }
     }
 
     // Click target
@@ -373,7 +394,8 @@ export class CharacterController implements Updatable {
       this.input.state.clickMoveTarget = null;
       this.isSitting = false;
 
-      this.rippleMesh.position.set(this.targetDestination.x, 0.04, this.targetDestination.z);
+      this.rippleMesh.position.copy(this.targetDestination).y += 0.045;
+      alignToGround(this.rippleMesh, this.targetDestination.x, this.targetDestination.z);
       this.rippleMesh.scale.set(1.3, 1.3, 1.3);
       this.rippleMaterial.opacity = 1.0;
       this.rippleTimer = 0.45;
@@ -393,10 +415,18 @@ export class CharacterController implements Updatable {
       }
     }
 
+    if (this.input.state.jump && this.grounded) {
+      this.isSitting = false;
+      this.grounded = false;
+      this.verticalVelocity = JUMP_SPEED;
+    }
+    this.input.state.jump = false;
+
     // Movement Logic
     let moveX = 0;
     let moveZ = 0;
 
+    if (this.input.state.moveX || this.input.state.moveZ) this.targetDestination = null;
     if (this.targetDestination) {
       const dx = this.targetDestination.x - this.position.x;
       const dz = this.targetDestination.z - this.position.z;
@@ -434,22 +464,17 @@ export class CharacterController implements Updatable {
       this.facingAngle = Math.atan2(moveX, moveZ);
 
       const targetSpeed = this.input.state.isSprinting ? this.runSpeed : this.walkSpeed;
-      this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, targetSpeed, delta * 14);
-
-      const targetX = this.position.x + moveX * this.currentSpeed * delta;
-      const targetZ = this.position.z + moveZ * this.currentSpeed * delta;
-
-      const resolved = this.townMap.resolveCollision(this.position.x, this.position.z, targetX, targetZ, 0.45);
-      this.position.x = resolved.x;
-      this.position.z = resolved.z;
+      this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, targetSpeed, Math.min(1, delta * 14));
 
       this.animTimer += delta * (this.input.state.isSprinting ? 12 : 8);
-      const walkFrames = [1, 0, 3, 0];
-      this.frameIndex = walkFrames[Math.floor(this.animTimer) % 4];
     } else {
-      this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, 0, delta * 16);
-      this.frameIndex = this.isSitting ? 4 : 0;
+      this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, 0, Math.min(1, delta * 16));
       this.animTimer = 0;
+    }
+
+    const steps = Math.max(1, Math.ceil(delta * 60));
+    for (let i = 0; i < steps; i++) {
+      this.moveOnTerrain(delta / steps, moveX * this.currentSpeed, moveZ * this.currentSpeed);
     }
 
     // Classic Ragnarok Online Camera-Relative Billboarding:
@@ -463,7 +488,7 @@ export class CharacterController implements Updatable {
     let frame = 0;
     if (this.isSitting) {
       frame = 9; // Authentic RO1 Sitting Pose
-    } else if (this.isMoving) {
+    } else if (this.isMoving && this.grounded) {
       frame = 1 + (Math.floor(this.animTimer) % 8); // 8-beat walk cycle
     } else {
       frame = 0; // Standing Idle
@@ -485,6 +510,8 @@ export class CharacterController implements Updatable {
     }
 
     this.mesh.position.copy(this.position);
+    this.shadowDisc.position.y = 0.027 - this.jumpHeight;
+    alignToGround(this.shadowDisc, this.position.x, this.position.z);
 
     // Update speech bubble timer
     if (this.bubbleTimer > 0) {
@@ -500,6 +527,42 @@ export class CharacterController implements Updatable {
     this.updateCamera(delta);
   }
 
+  private moveOnTerrain(delta: number, velocityX: number, velocityZ: number): void {
+    if (delta <= 0) return;
+    const { x, y, z } = this.position;
+    const fallY = y + this.verticalVelocity * delta - GRAVITY * delta * delta * 0.5;
+    if (velocityX || velocityZ) {
+      const move = this.forestMap.resolveCollision(x, z, x + velocityX * delta, z + velocityZ * delta,
+        0.45, this.grounded ? undefined : Math.max(y, fallY));
+      this.position.x = move.x;
+      this.position.z = move.z;
+    }
+
+    const groundY = terrainHeight(this.position.x, this.position.z);
+    if (this.grounded) {
+      const distance = Math.hypot(this.position.x - x, this.position.z - z);
+      if (y - groundY <= distance * MAX_HIKE_GRADE + 0.002) {
+        this.position.y = groundY;
+        return;
+      }
+      this.grounded = false;
+    }
+
+    this.verticalVelocity -= GRAVITY * delta;
+    if (this.verticalVelocity <= 0 && fallY <= groundY) {
+      this.position.y = groundY;
+      this.grounded = true;
+      this.verticalVelocity = 0;
+    } else {
+      this.position.y = Math.max(fallY, groundY);
+    }
+  }
+
+  public resetCamera(): void {
+    this.cameraDistance = DEFAULT_CAMERA_DISTANCE;
+    this.cameraYaw = 0;
+  }
+
   public getCameraYaw(): number {
     return this.cameraYaw;
   }
@@ -511,11 +574,13 @@ export class CharacterController implements Updatable {
     const cosYaw = Math.cos(this.cameraYaw);
 
     const camX = this.position.x + this.cameraDistance * cosPitch * sinYaw;
-    const camY = this.position.y + this.cameraDistance * sinPitch;
+    const groundY = terrainHeight(this.position.x, this.position.z);
+    this.cameraGroundY = THREE.MathUtils.lerp(this.cameraGroundY, groundY, Math.min(1, delta * 8));
+    const camY = this.cameraGroundY + this.cameraDistance * sinPitch;
     const camZ = this.position.z + this.cameraDistance * cosPitch * cosYaw;
 
     const desiredPos = new THREE.Vector3(camX, Math.max(1.5, camY), camZ);
     this.camera.position.lerp(desiredPos, Math.min(1.0, delta * 10));
-    this.camera.lookAt(this.position.x, this.position.y + 1.2, this.position.z);
+    this.camera.lookAt(this.position.x, this.cameraGroundY + 1.2, this.position.z);
   }
 }
