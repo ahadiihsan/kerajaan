@@ -58,19 +58,25 @@ test('bow grip stays on the anatomical left hand through every direction and fra
   }
 });
 
-test('axe handle passes through both authored fists during windup and impact', () => {
+test('axe grip stays between the fists and its cutting face follows the body direction', () => {
   const equipment = new PlayerEquipment(new Scene());
-  for (const row of handGrips.chop) {
-    for (const column of [1,2,3,4,5,6]) {
-      const frame = row[column];
-      const lower = new Vector3(...frame.left, 0.04);
-      const upper = new Vector3(...frame.right, 0.04);
-      equipment.update({ ...drawn, bowEquipped: false, axeEquipped: true, chopTime: 0.3 }, new Vector3(1,0,0), lower, new Vector3(), true, upper);
-      assert.ok(equipment.axe.position.distanceTo(lower) < 1e-8);
-      const axis = new Vector3(0,1,0).applyQuaternion(equipment.axe.quaternion);
-      const separation = upper.clone().sub(lower);
-      assert.ok(separation.clone().cross(axis).length() < 1e-7);
-      assert.ok(separation.dot(axis) <= 0.485, 'support fist must lie on the handle');
+  for (let row = 0; row < 8; row++) {
+    const angle = row * Math.PI / 4;
+    const forward = new Vector3(Math.sin(angle), 0, Math.cos(angle));
+    for (const time of [null, 0.12, 0.28, 0.36, 0.48, 0.59, 0.72]) {
+      const frame = handGrips.chop[row][time === null ? 0 : time < 0.32 ? 1 : time < 0.54 ? 4 : 6];
+      const left = new Vector3(...frame.left, 0.04), right = new Vector3(...frame.right, 0.04);
+      equipment.update({ ...drawn, bowEquipped: false, axeEquipped: true, chopTime: time }, forward, left, new Vector3(), true, right);
+      const expectedGrip = left.clone().lerp(right, 0.5).addScaledVector(forward, 0.06);
+      assert.ok(equipment.axe.position.distanceTo(expectedGrip) < 1e-8);
+      const shaft = new Vector3(0, 1, 0).applyQuaternion(equipment.axe.quaternion);
+      const edge = new Vector3(1, 0, 0).applyQuaternion(equipment.axe.quaternion);
+      assert.ok(edge.dot(forward) > 0.2, 'cutting face must not reverse behind the player');
+      if (time === null || time >= 0.66) assert.ok(shaft.y > 0.98, 'resting head stays above the grip');
+      if (time !== null && time >= 0.32 && time < 0.54) {
+        assert.ok(shaft.dot(forward) > 0.9, 'impact reaches in front of the body');
+        assert.ok(edge.y < -0.9, 'cutting edge faces down during impact');
+      }
     }
   }
 });

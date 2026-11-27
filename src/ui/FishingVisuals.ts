@@ -1,16 +1,14 @@
 import * as THREE from 'three';
 import { clamp } from '../utils/math';
 import { itemIcon } from './ItemIcons';
+import { FishingRodSprite } from './FishingRodSprite';
 import type { ToolAppearance } from '../entities/PlayerEquipment';
 
 export const CAST_FLIGHT = 0.55;
 export const BITE_ANIMATION = 0.36;
 
 export class FishingVisuals {
-  private readonly rod = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.019, 0.042, 1, 6),
-    new THREE.MeshLambertMaterial({ color: 0xa36634 }),
-  );
+  private readonly rod: FishingRodSprite;
   private readonly bobber = new THREE.Mesh(
     new THREE.SphereGeometry(0.09, 10, 8),
     new THREE.MeshBasicMaterial({ color: 0xff7150 }),
@@ -31,9 +29,9 @@ export class FishingVisuals {
   private readonly hand = new THREE.Vector3();
   private readonly tip = new THREE.Vector3();
   private readonly direction = new THREE.Vector3();
-  private readonly up = new THREE.Vector3(0, 1, 0);
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, onAssetReady?: () => void) {
+    this.rod = new FishingRodSprite(undefined, onAssetReady);
     scene.add(this.rod, this.bobber, this.line, this.caught, ...this.ripples);
     this.line.frustumCulled = false;
     const texture = this.caught.material.map!;
@@ -52,9 +50,7 @@ export class FishingVisuals {
     appearance: ToolAppearance,
   ): void {
     this.rod.visible = equipped;
-    this.rod.material.color.setHex(appearance.woodColor);
     this.line.material.color.setHex(appearance.metalColor);
-    this.rod.scale.y = appearance.scale;
     this.bobber.visible = this.line.visible = cast !== null;
     this.caught.visible = catchTime > 0;
     this.hand.copy(handSocket);
@@ -86,8 +82,7 @@ export class FishingVisuals {
     }
     this.direction.normalize();
     this.tip.copy(this.hand).addScaledVector(this.direction, appearance.scale);
-    this.rod.position.copy(this.hand).lerp(this.tip, 0.5);
-    this.rod.quaternion.setFromUnitVectors(this.up, this.direction);
+    this.rod.update(this.hand, this.tip, appearance);
 
     const flight = cast ? clamp((cast.elapsed - 0.12) / (CAST_FLIGHT - 0.12), 0, 1) : 0;
     if (cast) {

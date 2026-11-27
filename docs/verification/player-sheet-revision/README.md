@@ -1,5 +1,15 @@
 # Player poses and separate equipment
 
+## Directional axe artwork revision — 2026-11-27
+
+The active axe is now `src/assets/items/axe-directions-v3.png`: eight authored front, rear, side and diagonal views in the supplied reference’s simple gray-head, brown-handle, black-outline style. Calibration is in the adjacent JSON; the generation prompt is under `assets-raw/items/axe-directions-v3/`. `AxeSprite` selects artwork using body heading relative to camera yaw rather than mirroring a single broadside axe.
+
+After the user reported that the equipment texture did not match and confirmed the axe was too small, v3 adds character-matched warm outlines, steel facets and wood highlights, and the default axe scale increases from 1.0 to 1.25. Visual acceptance is pending.
+
+The chop shaft now follows the body’s forward swing plane, with the grip centered between the authored fists and a small forward offset. The earlier assumption that the line between the side-by-side fists was the handle axis was incorrect. Rest keeps the head upright; impact brings the cutting edge forward and down. Rear-facing equipment uses scene depth so the body can hide the forward-held axe instead of painting it over the character’s back.
+
+Validation: production build and 20 character/fishing/preview tests pass. Browser checks exercised all chop frames and eight directions, item overrides, mobile width and reduced motion, with no page or console errors. Visual inspection covered the equipped preview; actual gameplay and user visual acceptance remain outstanding.
+
 ## Checkpoint status
 
 The user requested a branch, commit, and push of the current progress on 2026-11-27. Visual acceptance has **not** been reached. This is an experimental checkpoint, not a finished animation implementation.

@@ -62,6 +62,9 @@ def export_rig(atlases, clean, destination, clean_points):
             if action == 'bow':
                 sources = [0,2,2,4,4,5,0,0]
                 stages = [0,1,1,2,2,3,0,0]
+                if row == 5:
+                    sources = [2,2,2,4,4,5,2,2]
+                    stages = [1,1,1,2,2,3,1,1]
                 points = BOW[row]
                 source = atlases[action]
             elif action == 'fish':
@@ -77,6 +80,8 @@ def export_rig(atlases, clean, destination, clean_points):
                 source = atlases[action]
             else:
                 sources = [0,1,1,1,2,2,3,0]
+                if row in (3,5):
+                    sources = [3,1,1,1,2,2,3,3]
                 stages = sources
                 points = clean_points[row]
                 source = clean
@@ -84,7 +89,7 @@ def export_rig(atlases, clean, destination, clean_points):
             for column, (source_column, stage) in enumerate(zip(sources, stages)):
                 cell = source.crop((source_column*320,row*320,(source_column+1)*320,(row+1)*320))
                 left, right = points[stage]
-                if action == 'chop' and stage == 0 and row in (3,4,5):
+                if action == 'chop' and stage == 0 and row == 4:
                     cell = atlases['chop'].crop((0,row*320,320,(row+1)*320))
                     left, right = {3:((190,256),(215,265)),4:((116,256),(199,256)),5:((124,261),(102,271))}[row]
                 result.alpha_composite(cell, (column*320,row*320))

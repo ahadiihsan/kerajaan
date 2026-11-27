@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { AxeSprite } from './AxeSprite';
 import type { PlayerPose } from './PlayerSheet';
 
 export interface ToolAppearance {
@@ -10,7 +11,7 @@ export interface ToolAppearance {
 export type ToolKind = 'axe' | 'bow' | 'rod' | 'arrow';
 
 export const DEFAULT_TOOL_APPEARANCE: Record<ToolKind, ToolAppearance> = {
-  axe: { woodColor: 0x9e6538, metalColor: 0xb9c5ce, scale: 1 },
+  axe: { woodColor: 0x9e6538, metalColor: 0xb9c5ce, scale: 1.25 },
   bow: { woodColor: 0xaf743d, metalColor: 0xe8d8ae, scale: 1 },
   rod: { woodColor: 0xa36634, metalColor: 0xe8d8ae, scale: 1 },
   arrow: { woodColor: 0x9e6538, metalColor: 0xb9c5ce, scale: 1 },
@@ -23,8 +24,7 @@ export class PlayerEquipment {
   public readonly appearance = structuredClone(DEFAULT_TOOL_APPEARANCE);
   public readonly arrowWood = new THREE.MeshLambertMaterial({ color: this.appearance.arrow.woodColor });
   public readonly arrowMetal = new THREE.MeshLambertMaterial({ color: this.appearance.arrow.metalColor });
-  private readonly axeWood = new THREE.MeshLambertMaterial({ color: this.appearance.axe.woodColor });
-  private readonly axeMetal = new THREE.MeshLambertMaterial({ color: this.appearance.axe.metalColor });
+  private readonly axeSprite: AxeSprite;
   private readonly bowWood = new THREE.MeshLambertMaterial({ color: this.appearance.bow.woodColor });
   private readonly stringPoints = new THREE.BufferAttribute(new Float32Array(9), 3);
   private readonly string = new THREE.Line(
@@ -33,13 +33,14 @@ export class PlayerEquipment {
   );
   private readonly up = new THREE.Vector3(0, 1, 0);
   private readonly direction = new THREE.Vector3();
+  private readonly forward = new THREE.Vector3();
+  private readonly blade = new THREE.Vector3();
+  private readonly side = new THREE.Vector3();
+  private readonly axeBasis = new THREE.Matrix4();
 
-  constructor(scene: THREE.Scene) {
-    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.034, 0.73, 6), this.axeWood);
-    handle.position.y = 0.12;
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.29, 0.19, 0.055), this.axeMetal);
-    blade.position.set(0.1, 0.43, 0);
-    this.axe.add(handle, blade);
+  constructor(scene: THREE.Scene, onAssetReady?: () => void) {
+    this.axeSprite = new AxeSprite(onAssetReady);
+    this.axe.add(this.axeSprite);
     const curve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(0, -0.4, -0.12), new THREE.Vector3(0, -0.27, 0.025),
       new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0.27, 0.025), new THREE.Vector3(0, 0.4, -0.12),
@@ -56,8 +57,7 @@ export class PlayerEquipment {
 
   public setAppearance(tool: ToolKind, values: Partial<ToolAppearance>): void {
     Object.assign(this.appearance[tool], values);
-    this.axeWood.color.setHex(this.appearance.axe.woodColor);
-    this.axeMetal.color.setHex(this.appearance.axe.metalColor);
+    this.axeSprite.setAppearance(this.appearance.axe);
     this.bowWood.color.setHex(this.appearance.bow.woodColor);
     this.arrowWood.color.setHex(this.appearance.arrow.woodColor);
     this.arrowMetal.color.setHex(this.appearance.arrow.metalColor);
@@ -68,15 +68,22 @@ export class PlayerEquipment {
     this.axe.visible = ready && pose.axeEquipped;
     this.bow.visible = ready && pose.bowEquipped;
     const yaw = Math.atan2(aim.x, aim.z);
-    const twoHanded = pose.chopTime !== null && pose.chopTime >= 0.08 && pose.chopTime < 0.66;
-    this.axe.position.copy(twoHanded ? axeHand : axeSupport ?? axeHand);
+    this.forward.set(aim.x, 0, aim.z);
+    if (this.forward.lengthSq() < 0.0001) this.forward.set(0, 0, 1);
+    this.forward.normalize();
+    const time = pose.chopTime;
+    const angle = time === null || time >= 0.66 ? 0.15
+      : time < 0.08 ? 0.15 - time / 0.08 * 0.45
+        : time < 0.32 ? -0.3 - (time - 0.08) / 0.24 * 0.35
+          : time < 0.54 ? 1.35
+            : 1.35 - (time - 0.54) / 0.12 * 1.2;
+    this.axe.position.copy(axeHand).lerp(axeSupport ?? axeHand, 0.5).addScaledVector(this.forward, 0.06);
     this.axe.scale.setScalar(this.appearance.axe.scale);
-    this.axe.rotation.set(0, yaw, 0);
-    this.direction.copy(axeSupport ?? axeHand).sub(axeHand);
-    if (!twoHanded) this.direction.copy(this.up);
-    if (this.direction.lengthSq() < 0.0001) this.direction.copy(this.up);
-    this.axe.quaternion.setFromUnitVectors(this.up, this.direction.normalize());
-    this.axe.rotateY(yaw);
+    this.direction.copy(this.forward).multiplyScalar(Math.sin(angle)).addScaledVector(this.up, Math.cos(angle));
+    this.blade.copy(this.forward).multiplyScalar(Math.cos(angle)).addScaledVector(this.up, -Math.sin(angle));
+    this.side.crossVectors(this.blade, this.direction).normalize();
+    this.axe.quaternion.setFromRotationMatrix(this.axeBasis.makeBasis(this.blade, this.direction, this.side));
+    this.axeSprite.setFacing(this.forward);
     this.bow.position.copy(bowHand);
     this.bow.rotation.set(0, yaw, 0);
     this.bow.scale.setScalar(this.appearance.bow.scale);

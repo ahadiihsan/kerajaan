@@ -25,6 +25,11 @@ function multiplayerPlugin(): Plugin {
 
 export default defineConfig({
   plugins: [multiplayerPlugin()],
+  build: {
+    rollupOptions: {
+      input: { game: path.resolve(__dirname, 'index.html'), sprites: path.resolve(__dirname, 'sprites.html') },
+    },
+  },
   server: {
     port: 3000,
     host: true,

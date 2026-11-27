@@ -80,3 +80,7 @@ An authentic 2.5D HD-2D recreation of **Ragnarok Online 1's Capital City Pronter
 npm run build
 firebase deploy --only hosting
 ```
+
+## Character sprite inspection
+
+Run `npm run dev` and open [Sprite Inspector](http://localhost:3000/sprites.html). The page includes the five active Rowan atlases, synchronized eight-direction animations, frame stepping, full-sheet cell selection, zoom, backgrounds, and authored hand-grip overlays. Sheet order includes all frames; game frame selection calls the current action selector (fishing uses a labeled staged demo). Equipped previews reuse the game’s 3D bow and arrow, plus 2D pixel-art axe and fishing rod sprites with a live line and bobber, with body-only comparison and selectable camera angles. Idle and walk can be previewed with any tool. The axe uses eight authored direction views, with an Open axe sheet link for inspection. The full character-sheet view remains body-only. The page is also included in production builds at `/sprites.html`.
