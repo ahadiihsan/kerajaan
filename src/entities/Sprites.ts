@@ -9,6 +9,7 @@ export type CharacterRole =
   | 'Farmer'
   | 'Bard'
   | 'Priest'
+  | 'Imam'
   | 'Child'
   | 'Townsfolk'
   | 'Traveler';
@@ -23,7 +24,7 @@ export interface CharacterLook {
   long?: boolean;
   tabard?: string;
   trim?: string;
-  hat?: 'helm' | 'band' | 'brim' | 'straw' | 'feather';
+  hat?: 'helm' | 'band' | 'brim' | 'straw' | 'feather' | 'turban';
   hatCol?: string;
   apron?: string;
   beard?: boolean;
@@ -81,6 +82,7 @@ export function makeLook(role: Exclude<CharacterRole, 'Traveler'>): CharacterLoo
     Farmer: { shirt: pick(['#c9b26a', '#8aa05a', '#b0703a']), pants: '#5a4a8a', hat: 'straw' },
     Bard: { shirt: '#2f8a7a', pants: '#a83a5a', hat: 'feather', hatCol: '#a83a5a', lute: true },
     Priest: { shirt: '#ece6d6', robe: true, trim: '#d4af37', long: false, hair: '#9a9a9a' },
+    Imam: { shirt: '#f2ece0', robe: true, trim: '#2b8078', long: false, beard: true, hair: '#4a3a2c', hat: 'turban', hatCol: '#f5f2e8' },
     Child: { shirt: pick(['#e05a5a', '#5ab0e0', '#e0c05a', '#7ac05a']) },
     Townsfolk: {
       shirt: pick(['#c0504d', '#4f81bd', '#9bbb59', '#8064a2', '#f79646', '#d9b36c']),
@@ -141,7 +143,7 @@ export function drawChar(x: CanvasRenderingContext2D, ox: number, L: CharacterLo
     p(L.trim, 7, 13, 2, 4);
     p(L.trim, 6, 14, 4, 1);
   }
-  if (L.role === 'Priest' && L.trim) p(L.trim, 7, 12, 2, 10);
+  if ((L.role === 'Priest' || L.role === 'Imam') && L.trim) p(L.trim, 7, 12, 2, 10);
 
   if (act && L.role !== 'Guard') {
     p(dark, 3, 9, 1, 4);
@@ -206,6 +208,12 @@ export function drawChar(x: CanvasRenderingContext2D, ox: number, L: CharacterLo
       p(shade(L.hatCol ?? '#a83a5a', -0.25), 4, 6, 8, 1);
       line(x, '#f5f0e0', ox + 11, 1, ox + 12, 4);
       break;
+    case 'turban':
+      p(L.hatCol ?? '#f5f2e8', 4, 3, 8, 4);
+      p(shade(L.hatCol ?? '#f5f2e8', -0.14), 5, 2, 6, 1);
+      p(L.trim ?? '#2b8078', 4, 5, 8, 1);
+      p('#e9c46a', 7, 4, 2, 1);
+      break;
   }
 
   if (L.role === 'Guard') {
@@ -259,6 +267,10 @@ export function drawChar(x: CanvasRenderingContext2D, ox: number, L: CharacterLo
   }
   if (L.role === 'Priest' && !act) {
     p('#5a2a2a', 6, 15, 4, 3);
+    p('#e9c46a', 7, 16);
+  }
+  if (L.role === 'Imam' && !act) {
+    p('#2b8078', 6, 15, 4, 3);
     p('#e9c46a', 7, 16);
   }
   if (L.role === 'Merchant') p('#e9c46a', 10, 18, 2, 2);

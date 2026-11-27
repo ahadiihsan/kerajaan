@@ -53,6 +53,7 @@ export interface SharedMaterials {
   falls: THREE.MeshPhongMaterial;
   wood: THREE.MeshLambertMaterial;
   stone: THREE.MeshLambertMaterial;
+  sandstone: THREE.MeshLambertMaterial;
   dark: THREE.MeshLambertMaterial;
   iron: THREE.MeshLambertMaterial;
   gold: THREE.MeshLambertMaterial;
@@ -319,6 +320,7 @@ export function createTextures(): {
     }),
     wood: new THREE.MeshLambertMaterial({ map: TX.wood }),
     stone: new THREE.MeshLambertMaterial({ map: TX.stone }),
+    sandstone: new THREE.MeshLambertMaterial({ color: 0xeadcc0 }),
     dark: new THREE.MeshLambertMaterial({ color: 0x3a2a1e }),
     iron: new THREE.MeshLambertMaterial({ color: 0x3b3f47 }),
     gold: new THREE.MeshLambertMaterial({ color: 0xe9c46a, emissive: 0x6a4a10 }),
@@ -527,6 +529,77 @@ export function stoneWall(
       fr(x, '#9aa0a8', X + 1, Y + j);
       fr(x, '#9aa0a8', X + w - 2, Y + j);
     }
+  }
+  return { map: ctex(c, { rep: false, mip: false }), emi: ctex(ec, { rep: false, mip: false }), wins };
+}
+
+export function mosqueWall(
+  wu: number,
+  hu: number,
+  o: { arches?: Array<[number, number, number, number, boolean?]>; door?: boolean } = {}
+): WallTextureSet {
+  const pw = Math.round(wu * 16);
+  const ph = Math.round(hu * 16);
+  const [c, x] = cnv(pw, ph);
+  const [ec, ex] = cnv(pw, ph);
+  const wins: Array<[number, number]> = [];
+  fr(ex, '#000', 0, 0, pw, ph);
+  fr(x, '#b9a88a', 0, 0, pw, ph);
+  for (let row = 0; row * 4 < ph; row++) {
+    const off = row % 2 ? 4 : 0;
+    for (let col = -1; col * 8 < pw; col++) {
+      const cc = shade(pick(['#efe4cb', '#e5d6b7', '#f4ecd8', '#dccaa7']), R(-0.04, 0.04));
+      fr(x, cc, col * 8 + off, row * 4, 7, 3);
+      fr(x, shade(cc, 0.14), col * 8 + off, row * 4, 7, 1);
+    }
+  }
+  if (ph >= 12) {
+    for (let i = 0; i < pw; i++) {
+      fr(x, i % 2 === 0 ? '#2b8078' : '#37998f', i, 2, 1, 2);
+      if (i % 4 === 0) fr(x, '#d8b24c', i, 2, 2, 1);
+    }
+    fr(x, '#968468', 0, 4, pw, 1);
+  }
+  fr(x, '#cbb895', 0, ph - 3, pw, 3);
+
+  const glass = ['#2fb4a6', '#f0c452', '#5893d4', '#f7e6b0'];
+  const arch = (X: number, Y: number, w: number, h: number, stained: boolean) => {
+    X = Math.round(X);
+    Y = Math.round(Y);
+    fr(x, '#7d6c52', X - 1, Y - 1, w + 2, h + 2);
+    for (let i = 0; i < w; i++) {
+      for (let j = 0; j < h; j++) {
+        if (j === 0 && (i === 0 || i === w - 1)) continue;
+        if (j === 1 && w >= 5 && (i === 0 || i === w - 1)) continue;
+        const col = stained ? glass[((i >> 1) + (j >> 1) * 2 + X) % glass.length] : '#231e18';
+        fr(x, stained ? shade(col, -0.3) : col, X + i, Y + j);
+        if (stained) fr(ex, col, X + i, Y + j);
+      }
+    }
+    if (stained) {
+      fr(x, '#4d3e2c', X + (w >> 1), Y, 1, h);
+      fr(ex, '#000', X + (w >> 1), Y, 1, h);
+      wins.push([(X + w / 2) / pw, 1 - (Y + h / 2) / ph]);
+    }
+  };
+  (o.arches || []).forEach(([u, v, w, h, s]) => arch(u * pw - w / 2, v * ph, w, h, s !== false));
+
+  if (o.door) {
+    const w = 10;
+    const h = Math.min(18, ph - 6);
+    const X = Math.round(pw / 2 - w / 2);
+    const Y = ph - h;
+    fr(x, '#2b8078', X - 2, Y - 2, w + 4, 2);
+    fr(x, '#7d6c52', X - 1, Y - 1, w + 2, h + 1);
+    for (let i = 0; i < w; i++) {
+      for (let j = 0; j < h; j++) {
+        if (j < 2 && (i < 2 || i > w - 3)) continue;
+        fr(x, shade('#6e4324', i % 5 === 0 ? -0.28 : R(-0.04, 0.06)), X + i, Y + j);
+      }
+    }
+    fr(x, '#2a1c12', X + (w >> 1), Y, 1, h);
+    fr(x, '#e9c46a', X + (w >> 1) - 1, Y + (h >> 1));
+    fr(x, '#e9c46a', X + (w >> 1) + 1, Y + (h >> 1));
   }
   return { map: ctex(c, { rep: false, mip: false }), emi: ctex(ec, { rep: false, mip: false }), wins };
 }

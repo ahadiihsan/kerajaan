@@ -36,7 +36,7 @@ function bootstrap(): void {
   const mapSurfaces = buildTerrain(engine.scene, grid, MAT);
   const buildings = buildBuildings(engine.scene, grid, TX, MAT, roofMat, mapSurfaces);
   const vegetation = buildVegetation(engine.scene, grid, buildings.nearDoor, MAT);
-  const updateWildlife = buildWildlife(engine.scene, grid);
+  const wildlife = buildWildlife(engine.scene, grid);
   grid.computeReachability();
   grid.createGridOverlay(engine.scene);
 
@@ -53,7 +53,7 @@ function bootstrap(): void {
   const dragon = new Dragon(engine.scene);
 
   let villagers: ReturnType<typeof createVillagers> = [];
-  villagers = createVillagers(buildings.houses, buildings.chapel.door, {
+  villagers = createVillagers(buildings.houses, buildings.chapel.door, buildings.mosque.door, {
     scene: engine.scene,
     grid,
     buildings,
@@ -86,6 +86,8 @@ function bootstrap(): void {
     grid,
     buildings,
     vegetation,
+    wildlife,
+    audio,
     TX,
     MAT,
     fxNorm: particles.fxNorm,
@@ -111,6 +113,7 @@ function bootstrap(): void {
     grid,
     buildings,
     vegetation,
+    wildlife,
     mapSurfaces,
     TX,
     fxNorm: particles.fxNorm,
@@ -152,7 +155,7 @@ function bootstrap(): void {
 
     hero.update(dt, engine.cam.yaw, engine.camRight);
     multiplayer.update(dt, engine.cam.yaw);
-    updateWildlife(world.T);
+    wildlife.update(world.T, dt);
 
     engine.updateCamera(dt, {
       followHero: hud.followHero,

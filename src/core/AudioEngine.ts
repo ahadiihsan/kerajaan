@@ -674,6 +674,39 @@ export class AudioEngine {
     g.connect(this.sfx);
   }
 
+  public bowShot(): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const o = this.osc('triangle', 260, t, t + 0.16);
+    o.frequency.exponentialRampToValueAtTime(110, t + 0.15);
+    const g = this.ctx.createGain();
+    this.env(g, t, 0.004, 0.08, 0.16);
+    o.connect(g);
+    g.connect(this.sfx);
+
+    const n = this.nz(t, 0.12);
+    const f = this.filt('bandpass', 1800, 1.5);
+    const ng = this.ctx.createGain();
+    this.env(ng, t, 0.005, 0.05, 0.12);
+    n.connect(f);
+    f.connect(ng);
+    ng.connect(this.sfx);
+  }
+
+  public arrowHit(x: number, z: number): void {
+    if (!this.ctx) return;
+    const cam = this.getCamDist();
+    const d = Math.hypot(x - cam.x, z - cam.z);
+    const v = 0.12 * clamp(1 - d / 35, 0.25, 1) * clamp(40 / cam.dist, 0.4, 1.4);
+    const t = this.ctx.currentTime;
+    const o = this.osc('sine', 180, t, t + 0.14);
+    o.frequency.exponentialRampToValueAtTime(65, t + 0.13);
+    const g = this.ctx.createGain();
+    this.env(g, t, 0.002, v, 0.14);
+    o.connect(g);
+    g.connect(this.sfx);
+  }
+
   public setWeather(w: number, night: number): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;

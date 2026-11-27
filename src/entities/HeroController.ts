@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { clamp, lerp, R, V3 } from '../utils/math';
-import { idx, T, TH, WorldGrid, wx, wz, type TileCoord } from '../world/WorldGrid';
+import { idx, N, T, TH, ti, tj, WorldGrid, wx, wz, type TileCoord } from '../world/WorldGrid';
 import type { SharedMaterials, ProceduralTextures } from '../world/Textures';
 import type { WorldBuildings } from '../world/Buildings';
 import type { WorldVegetation } from '../world/Vegetation';
+import { DEER_MEAT_YIELD, type WorldWildlife } from '../world/Wildlife';
+import type { AudioEngine } from '../core/AudioEngine';
 import type { Pool } from '../core/Particles';
 import type { Villager } from './Villager';
 import { characterSprite, DEFAULT_TRAVELER_PALETTE, type TravelerPalette } from './Sprites';
@@ -40,6 +42,18 @@ export interface WoodDrop {
   age: number;
 }
 
+export interface MeatDrop extends WoodDrop {
+  kind: 'meat';
+}
+
+interface ArrowProjectile {
+  mesh: THREE.Group;
+  pos: THREE.Vector3;
+  vel: THREE.Vector3;
+  stuck: boolean;
+  ttl: number;
+}
+
 export interface BuildingSite {
   i: number;
   j: number;
@@ -49,7 +63,7 @@ export interface BuildingSite {
 
 export type HeroInteraction =
   | { kind: 'chop'; target: number; elapsed: number }
-  | { kind: 'loot'; target: WoodDrop; elapsed: number }
+  | { kind: 'loot'; target: WoodDrop | MeatDrop; elapsed: number }
   | { kind: 'build'; target: BuildingSite; elapsed: number };
 
 export interface HeroCoopBridge {
@@ -80,22 +94,38 @@ export class HeroController {
   public step: { dx: number; dz: number; progress: number } | null = null;
   public path: TileCoord[] = [];
   public wood = 0;
+  public meat = 0;
 
   public readonly heldMoves = new Map<string, MoveDirection>();
   public queuedMove: MoveDirection | null = null;
   public axeEquipped = false;
+  public bowEquipped = false;
   public placingBlueprint = false;
   public buildingSite: BuildingSite | null = null;
   public readonly woodDrops: WoodDrop[] = [];
+  public readonly meatDrops: MeatDrop[] = [];
   public interaction: HeroInteraction | null = null;
 
   private readonly scene: THREE.Scene;
   private readonly grid: WorldGrid;
   private readonly buildings: WorldBuildings;
   private readonly vegetation: WorldVegetation;
+  private readonly wildlife?: WorldWildlife;
+  private readonly audio?: AudioEngine;
   private readonly fxNorm: Pool;
   private readonly logGeometry: THREE.CylinderGeometry;
   private readonly logMaterials: THREE.Material[];
+  private readonly arrowShaftGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.68, 5);
+  private readonly arrowTipGeo = new THREE.ConeGeometry(0.052, 0.16, 5);
+  private readonly arrowFletchGeo = new THREE.PlaneGeometry(0.14, 0.08);
+  private readonly arrowShaftMat: THREE.Material;
+  private readonly arrowTipMat: THREE.Material;
+  private readonly arrowFletchMat = new THREE.MeshLambertMaterial({ color: 0xf0e4d2, side: THREE.DoubleSide });
+  private readonly meatMat = new THREE.MeshLambertMaterial({ color: 0xa63a2b, flatShading: true });
+  private readonly boneMat = new THREE.MeshLambertMaterial({ color: 0xeadfc8, flatShading: true });
+  private readonly arrows: ArrowProjectile[] = [];
+  private arrowCooldown = 0;
+  private shootAnimTimer = 0;
   private readonly blueprintInk = new THREE.MeshBasicMaterial({ color: 0x56b8fc });
   private readonly blueprintLine = new THREE.BoxGeometry(1, 0.025, 0.055);
   private readonly toast: (msg: string, ms?: number) => void;
@@ -106,12 +136,16 @@ export class HeroController {
   public onBuildStatusChange?: () => void;
   public onChopProgressChange?: (treeHits: number | null) => void;
   public onBlueprintModeChange?: (active: boolean) => void;
+  public onAxeModeChange?: (active: boolean) => void;
+  public onBowModeChange?: (active: boolean) => void;
 
   constructor(opts: {
     scene: THREE.Scene;
     grid: WorldGrid;
     buildings: WorldBuildings;
     vegetation: WorldVegetation;
+    wildlife?: WorldWildlife;
+    audio?: AudioEngine;
     TX: ProceduralTextures;
     MAT: SharedMaterials;
     fxNorm: Pool;
@@ -125,11 +159,17 @@ export class HeroController {
     this.grid = opts.grid;
     this.buildings = opts.buildings;
     this.vegetation = opts.vegetation;
+    this.wildlife = opts.wildlife;
+    this.audio = opts.audio;
     this.fxNorm = opts.fxNorm;
     this.villagers = opts.villagers;
     this.toast = opts.toast;
     this.focusHero = opts.focusHero;
     this.coop = opts.coop;
+    this.arrowShaftMat = opts.MAT.wood;
+    this.arrowTipMat = opts.MAT.iron;
+    this.arrowShaftGeo.rotateX(Math.PI / 2);
+    this.arrowTipGeo.rotateX(Math.PI / 2);
 
     const pal = opts.palette ?? DEFAULT_TRAVELER_PALETTE;
     const sprite = characterSprite(
@@ -184,8 +224,37 @@ export class HeroController {
     this.queuedMove = null;
   }
 
+  public setAxeMode(active: boolean): void {
+    this.axeEquipped = active;
+    if (active) {
+      if (this.bowEquipped) this.setBowMode(false);
+      if (this.placingBlueprint) this.setBlueprintMode(false);
+      this.toast('Axe equipped. Click or tap a tree.', 2200);
+    } else if (this.interaction?.kind === 'chop') {
+      this.cancelInteraction();
+    }
+    this.onAxeModeChange?.(active);
+  }
+
+  public setBowMode(active: boolean): void {
+    this.bowEquipped = active;
+    if (active) {
+      if (this.axeEquipped) this.setAxeMode(false);
+      if (this.placingBlueprint) this.setBlueprintMode(false);
+      if (this.interaction?.kind === 'chop' || this.interaction?.kind === 'build') {
+        this.cancelInteraction();
+      }
+      this.toast('Bow equipped. Click a deer or anywhere to shoot.', 2400);
+    }
+    this.onBowModeChange?.(active);
+  }
+
   public setBlueprintMode(active: boolean): void {
     this.placingBlueprint = active;
+    if (active) {
+      if (this.axeEquipped) this.setAxeMode(false);
+      if (this.bowEquipped) this.setBowMode(false);
+    }
     this.onBlueprintModeChange?.(active);
     if (active) this.toast('Choose a clear, flat 3 × 3 area with room for a south-facing entrance.');
   }
@@ -402,7 +471,7 @@ export class HeroController {
 
   public startInteraction(
     kind: HeroInteraction['kind'],
-    target: number | WoodDrop | BuildingSite,
+    target: number | WoodDrop | MeatDrop | BuildingSite,
     i: number,
     j: number
   ): void {
@@ -413,7 +482,7 @@ export class HeroController {
         kind === 'chop'
           ? 'No path to this tree.'
           : kind === 'loot'
-            ? 'No path to the wood.'
+            ? 'No path to the drop.'
             : 'No path to the blueprint entrance.'
       );
       return;
@@ -425,7 +494,7 @@ export class HeroController {
       this.interaction = { kind: 'chop', target: target as number, elapsed: 0 };
       this.onChopProgressChange?.(this.vegetation.trees[target as number]?.hits ?? 0);
     } else if (kind === 'loot') {
-      this.interaction = { kind: 'loot', target: target as WoodDrop, elapsed: 0 };
+      this.interaction = { kind: 'loot', target: target as WoodDrop | MeatDrop, elapsed: 0 };
     } else {
       this.interaction = { kind: 'build', target: target as BuildingSite, elapsed: 0 };
     }
@@ -477,6 +546,194 @@ export class HeroController {
       this.interaction = null;
     }
     return drop;
+  }
+
+  private makeArrowMesh(): THREE.Group {
+    const g = new THREE.Group();
+    const shaft = new THREE.Mesh(this.arrowShaftGeo, this.arrowShaftMat);
+    shaft.castShadow = true;
+    g.add(shaft);
+    const tip = new THREE.Mesh(this.arrowTipGeo, this.arrowTipMat);
+    tip.position.z = 0.38;
+    g.add(tip);
+    for (const rotZ of [0, Math.PI / 2]) {
+      const f = new THREE.Mesh(this.arrowFletchGeo, this.arrowFletchMat);
+      f.position.z = -0.26;
+      f.rotation.y = Math.PI / 2;
+      f.rotation.x = rotZ;
+      g.add(f);
+    }
+    return g;
+  }
+
+  private makeMeatMesh(): THREE.Group {
+    const g = new THREE.Group();
+    const cut = new THREE.Mesh(new THREE.SphereGeometry(0.18, 7, 5), this.meatMat);
+    cut.scale.set(1.25, 0.85, 0.9);
+    cut.position.set(0, 0.16, 0);
+    cut.castShadow = true;
+    cut.receiveShadow = true;
+    g.add(cut);
+    const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.28, 6), this.boneMat);
+    bone.rotation.z = Math.PI / 2;
+    bone.position.set(0.2, 0.16, 0);
+    g.add(bone);
+    return g;
+  }
+
+  private nearestWalkableTile(ci: number, cj: number): TileCoord {
+    const i0 = clamp(ci, 0, N - 1);
+    const j0 = clamp(cj, 0, N - 1);
+    if (this.grid.walkable(i0, j0)) return [i0, j0];
+    for (let r = 1; r <= 3; r++) {
+      for (let dj = -r; dj <= r; dj++) {
+        for (let di = -r; di <= r; di++) {
+          const i = i0 + di;
+          const j = j0 + dj;
+          if (this.grid.walkable(i, j)) return [i, j];
+        }
+      }
+    }
+    return [this.i, this.j];
+  }
+
+  public spawnMeatDrop(x: number, z: number, quantity = DEER_MEAT_YIELD): MeatDrop {
+    const [i, j] = this.nearestWalkableTile(ti(x), tj(z));
+    const mesh = this.makeMeatMesh();
+    const origin = new V3(wx(i), this.grid.groundY(wx(i), wz(j)) + 0.04, wz(j));
+    mesh.position.copy(origin);
+    const drop: MeatDrop = {
+      id: `meat_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      kind: 'meat',
+      mesh,
+      origin,
+      i,
+      j,
+      quantity,
+      age: 0,
+    };
+    mesh.userData.drop = drop;
+    this.meatDrops.push(drop);
+    this.scene.add(mesh);
+    return drop;
+  }
+
+  public removeMeatDrop(dropId: string): MeatDrop | null {
+    const index = this.meatDrops.findIndex((d) => d.id === dropId);
+    if (index === -1) return null;
+    const [drop] = this.meatDrops.splice(index, 1);
+    this.scene.remove(drop.mesh);
+    if (this.interaction?.kind === 'loot' && this.interaction.target === drop) {
+      this.interaction = null;
+    }
+    return drop;
+  }
+
+  public shootArrowAt(target: THREE.Vector3, camRight: THREE.Vector3): void {
+    if (this.arrowCooldown > 0) return;
+    this.arrowCooldown = 0.45;
+    this.shootAnimTimer = 0.24;
+    this.clearMovement();
+    this.cancelInteraction();
+    this.path = [];
+
+    const horizontal = (target.x - this.x) * camRight.x + (target.z - this.z) * camRight.z;
+    if (Math.abs(horizontal) > 0.1) this.face = (Math.sign(horizontal) || 1) as 1 | -1;
+
+    const origin = new V3(this.x, this.grid.groundY(this.x, this.z) + 1.05, this.z);
+    const dx = target.x - origin.x;
+    const dz = target.z - origin.z;
+    const dist = Math.hypot(dx, dz);
+    const flightTime = clamp(dist / 20, 0.14, 0.78);
+    const gravity = 14;
+    const vel = new V3(
+      dx / flightTime,
+      (target.y - origin.y + 0.5 * gravity * flightTime * flightTime) / flightTime,
+      dz / flightTime
+    );
+
+    const mesh = this.makeArrowMesh();
+    mesh.position.copy(origin);
+    mesh.lookAt(origin.x + vel.x, origin.y + vel.y, origin.z + vel.z);
+    this.scene.add(mesh);
+    this.arrows.push({ mesh, pos: origin, vel, stuck: false, ttl: 2.0 });
+    this.audio?.bowShot();
+    this.focusHero();
+  }
+
+  private updateArrows(dt: number): void {
+    const gravity = 14;
+    for (let idxA = this.arrows.length - 1; idxA >= 0; idxA--) {
+      const arrow = this.arrows[idxA];
+      if (arrow.stuck) {
+        arrow.ttl -= dt;
+        if (arrow.ttl <= 0) {
+          this.scene.remove(arrow.mesh);
+          this.arrows.splice(idxA, 1);
+        }
+        continue;
+      }
+
+      arrow.vel.y -= gravity * dt;
+      arrow.pos.addScaledVector(arrow.vel, dt);
+      arrow.mesh.position.copy(arrow.pos);
+      arrow.mesh.lookAt(arrow.pos.x + arrow.vel.x, arrow.pos.y + arrow.vel.y, arrow.pos.z + arrow.vel.z);
+
+      let hitDeer = false;
+      if (this.wildlife) {
+        for (const deer of this.wildlife.deer) {
+          if (!deer.alive) continue;
+          const dist = Math.hypot(
+            arrow.pos.x - deer.pos.x,
+            arrow.pos.y - (deer.pos.y + 0.72),
+            arrow.pos.z - deer.pos.z
+          );
+          if (dist < 0.85) {
+            const res = this.wildlife.hitDeer(deer.id);
+            this.scene.remove(arrow.mesh);
+            this.arrows.splice(idxA, 1);
+            hitDeer = true;
+            if (res.hit) {
+              this.audio?.arrowHit(res.pos.x, res.pos.z);
+              for (let k = 0; k < (res.defeated ? 14 : 7); k++) {
+                this.fxNorm.spawn(
+                  res.pos.x,
+                  res.pos.y + 0.7,
+                  res.pos.z,
+                  R(-2, 2),
+                  R(1, 3),
+                  R(-2, 2),
+                  0.85,
+                  0.32,
+                  0.24,
+                  0.45,
+                  0.3,
+                  1,
+                  5,
+                  1.4,
+                  0.45
+                );
+              }
+              if (res.defeated) {
+                this.spawnMeatDrop(res.pos.x, res.pos.z, DEER_MEAT_YIELD);
+                this.toast('Deer hunted! Click the venison to collect it.', 2200);
+              } else {
+                this.toast('Deer hit! Shoot once more before it escapes!', 1800);
+              }
+            }
+            break;
+          }
+        }
+      }
+      if (hitDeer) continue;
+
+      const gy = this.grid.groundY(arrow.pos.x, arrow.pos.z);
+      if (arrow.pos.y <= gy) {
+        arrow.pos.y = gy + 0.03;
+        arrow.mesh.position.copy(arrow.pos);
+        arrow.stuck = true;
+      }
+    }
   }
 
   public applyTreeHitVisualAndFX(instance: number, hits: number, spawnLocalDrop = false, dropId?: string): void {
@@ -564,6 +821,15 @@ export class HeroController {
     );
     if (lift < 1) return this.axeEquipped ? 10 : 9;
 
+    if ('kind' in drop && drop.kind === 'meat') {
+      this.removeMeatDrop(drop.id);
+      this.meat += drop.quantity;
+      this.onBuildStatusChange?.();
+      this.toast(`+${drop.quantity} venison`, 1600);
+      this.interaction = null;
+      return this.axeEquipped ? 4 : 0;
+    }
+
     if (this.coop.isConnected()) {
       this.interaction = null;
       drop.mesh.position.copy(drop.origin);
@@ -583,6 +849,9 @@ export class HeroController {
     this.mesh.visible = this.marker.visible = true;
     if (this.grid.gridOverlay) this.grid.gridOverlay.visible = true;
     if (this.buildingSite) this.buildingSite.mesh.visible = true;
+    this.arrowCooldown = Math.max(0, this.arrowCooldown - dt);
+    this.shootAnimTimer = Math.max(0, this.shootAnimTimer - dt);
+    this.updateArrows(dt);
 
     if (!this.step) {
       const direction = this.queuedMove ?? [...this.heldMoves.values()].at(-1);
@@ -625,9 +894,11 @@ export class HeroController {
     if (this.axeEquipped) frame += 4;
     if (this.interaction && !this.step && !this.path.length) {
       frame = this.updateInteraction(dt, camRight);
+    } else if (this.shootAnimTimer > 0 && !this.step) {
+      frame = 3;
     }
 
-    for (const drop of this.woodDrops) {
+    for (const drop of [...this.woodDrops, ...this.meatDrops]) {
       drop.mesh.visible = true;
       if (this.interaction?.kind === 'loot' && this.interaction.target === drop && this.interaction.elapsed > 0) continue;
       drop.age = Math.min(1, drop.age + dt * 3);

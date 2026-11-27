@@ -5,6 +5,7 @@ import { N, ORIGIN, PCW, ti, tj, WorldGrid } from '../world/WorldGrid';
 import type { ProceduralTextures } from '../world/Textures';
 import type { WorldBuildings } from '../world/Buildings';
 import type { WorldVegetation } from '../world/Vegetation';
+import type { WorldWildlife } from '../world/Wildlife';
 import type { Pool } from '../core/Particles';
 import type { AudioEngine } from '../core/AudioEngine';
 import type { Engine } from '../core/Engine';
@@ -50,6 +51,7 @@ export class HUD {
   private readonly grid: WorldGrid;
   private readonly buildings: WorldBuildings;
   private readonly vegetation: WorldVegetation;
+  private readonly wildlife: WorldWildlife;
   private readonly mapSurfaces: THREE.Mesh[];
   private readonly fxNorm: Pool;
   private readonly audio: AudioEngine;
@@ -63,6 +65,7 @@ export class HUD {
     grid: WorldGrid;
     buildings: WorldBuildings;
     vegetation: WorldVegetation;
+    wildlife: WorldWildlife;
     mapSurfaces: THREE.Mesh[];
     TX: ProceduralTextures;
     fxNorm: Pool;
@@ -76,6 +79,7 @@ export class HUD {
     this.grid = opts.grid;
     this.buildings = opts.buildings;
     this.vegetation = opts.vegetation;
+    this.wildlife = opts.wildlife;
     this.mapSurfaces = opts.mapSurfaces;
     this.fxNorm = opts.fxNorm;
     this.audio = opts.audio;
@@ -118,6 +122,16 @@ export class HUD {
 
     this.hero.onBuildStatusChange = () => this.refreshBuildStatus();
     this.hero.onChopProgressChange = (hits) => this.showChopProgress(hits);
+    this.hero.onAxeModeChange = (active) => {
+      const btn = $('axeTool');
+      btn.classList.toggle('on', active);
+      btn.setAttribute('aria-pressed', String(active));
+    };
+    this.hero.onBowModeChange = (active) => {
+      const btn = $('bowTool');
+      btn.classList.toggle('on', active);
+      btn.setAttribute('aria-pressed', String(active));
+    };
     this.hero.onBlueprintModeChange = (active) => {
       const btn = $('blueprintTool');
       btn.classList.toggle('on', active);
@@ -370,6 +384,7 @@ export class HUD {
 
   public refreshBuildStatus(): void {
     $('woodCount').textContent = `Wood ${this.hero.wood}`;
+    $('meatCount').textContent = `Meat ${this.hero.meat}`;
     $('buildStatus').classList.toggle('hide', !this.hero.buildingSite);
     if (!this.hero.buildingSite) return;
     const { stored } = this.hero.buildingSite;
@@ -438,13 +453,12 @@ export class HUD {
       this.syncFollow();
     });
 
-    $('axeTool').addEventListener('click', (e) => {
-      this.hero.axeEquipped = !this.hero.axeEquipped;
-      const btn = e.currentTarget as HTMLElement;
-      btn.setAttribute('aria-pressed', String(this.hero.axeEquipped));
-      btn.classList.toggle('on', this.hero.axeEquipped);
-      if (this.hero.axeEquipped) this.toast('Axe equipped. Click or tap a tree.', 2200);
-      else if (this.hero.interaction?.kind === 'chop') this.hero.cancelInteraction();
+    $('axeTool').addEventListener('click', () => {
+      this.hero.setAxeMode(!this.hero.axeEquipped);
+    });
+
+    $('bowTool').addEventListener('click', () => {
+      this.hero.setBowMode(!this.hero.bowEquipped);
     });
 
     $('blueprintTool').addEventListener('click', () => {
@@ -562,6 +576,23 @@ export class HUD {
       ) {
         const villager = this.pickAt(e.clientX, e.clientY);
         const tile = this.pickMapTile();
+        const meat = this.pickMeat();
+        if (this.hero.bowEquipped) {
+          this.select(null);
+          const deerHit = this.pickDeer();
+          if (meat && (!deerHit || meat.distance < deerHit.hit.distance)) {
+            const drop = meat.object.parent?.userData.drop;
+            if (drop) this.hero.startInteraction('loot', drop, drop.i, drop.j);
+          } else if (deerHit) {
+            const d = this.wildlife.deer[deerHit.deerIndex];
+            this.hero.shootArrowAt(new V3(d.pos.x, d.pos.y + 0.72, d.pos.z), this.engine.camRight);
+          } else {
+            const pt = this.pickMapPoint();
+            if (pt) this.hero.shootArrowAt(pt.clone().add(new V3(0, 0.35, 0)), this.engine.camRight);
+            else this.toast('Aim at a deer or anywhere on the map to shoot.', 1500);
+          }
+          return;
+        }
         if (this.hero.placingBlueprint) {
           if (tile) this.hero.placeBlueprint(...tile);
           else this.toast('Choose a tile on the map for the blueprint.');
@@ -574,9 +605,11 @@ export class HUD {
         }
         const tree = this.pickTree();
         const wood = this.pickWood();
-        if (wood && (!tree || wood.distance < tree.distance)) {
+        const closestDrop =
+          meat && (!wood || meat.distance < wood.distance) ? meat : wood;
+        if (closestDrop && (!tree || closestDrop.distance < tree.distance)) {
           this.select(null);
-          const drop = wood.object.parent?.userData.drop;
+          const drop = closestDrop.object.parent?.userData.drop;
           if (drop) this.hero.startInteraction('loot', drop, drop.i, drop.j);
         } else if (tree && tree.instanceId !== undefined) {
           this.select(null);
@@ -651,6 +684,7 @@ export class HUD {
       this.audio.resume();
       if (e.key === 'Escape') {
         this.hero.setBlueprintMode(false);
+        this.hero.setBowMode(false);
         this.select(null);
       }
     });
@@ -679,9 +713,29 @@ export class HUD {
     )[0];
   }
 
-  private pickMapTile(): [number, number] | null {
+  private pickMeat(): THREE.Intersection | undefined {
+    return this.ray.intersectObjects(
+      this.hero.meatDrops.map((drop) => drop.mesh),
+      true
+    )[0];
+  }
+
+  private pickDeer(): { hit: THREE.Intersection; deerIndex: number } | undefined {
+    const aliveMeshes = this.wildlife.deer.filter((d) => d.alive).map((d) => d.mesh);
+    const hit = this.ray.intersectObjects(aliveMeshes, true)[0];
+    if (!hit) return undefined;
+    const deerIndex = hit.object.userData.deerIndex;
+    return typeof deerIndex === 'number' ? { hit, deerIndex } : undefined;
+  }
+
+  private pickMapPoint(): THREE.Vector3 | null {
     const hit = this.ray.intersectObjects(this.mapSurfaces, false).find((c) => c.face && c.face.normal.y > 0.5);
-    return hit ? [ti(hit.point.x), tj(hit.point.z)] : null;
+    return hit ? hit.point : null;
+  }
+
+  private pickMapTile(): [number, number] | null {
+    const pt = this.pickMapPoint();
+    return pt ? [ti(pt.x), tj(pt.z)] : null;
   }
 
   private hoverPick(e: PointerEvent): void {
@@ -690,11 +744,16 @@ export class HUD {
     this.hoverT = n;
     const villager = this.pickAt(e.clientX, e.clientY);
     const tile = this.hero.buildingSite ? this.pickMapTile() : null;
-    this.engine.canvas.style.cursor = this.hero.placingBlueprint
-      ? 'crosshair'
-      : villager || (tile && this.hero.isBlueprintTile(...tile)) || this.pickWood() || (this.hero.axeEquipped && this.pickTree())
-        ? 'pointer'
-        : '';
+    this.engine.canvas.style.cursor =
+      this.hero.placingBlueprint || this.hero.bowEquipped
+        ? 'crosshair'
+        : villager ||
+            (tile && this.hero.isBlueprintTile(...tile)) ||
+            this.pickWood() ||
+            this.pickMeat() ||
+            (this.hero.axeEquipped && this.pickTree())
+          ? 'pointer'
+          : '';
   }
 
   private updateNameLabel(label: HTMLElement, actorMesh: THREE.Object3D, height: number, visible: boolean): void {

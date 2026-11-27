@@ -89,7 +89,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:3px;bac
 #movePad{display:none}
 #toolBar{display:flex;align-items:center;gap:6px}
 #toolBar .btn{min-height:44px;text-align:center}
-#woodCount{white-space:nowrap}
+#woodCount,#meatCount{white-space:nowrap}
 #buildStatus{position:absolute;bottom:calc(100% + 8px);right:0;display:flex;align-items:center;gap:8px;padding:4px 5px 4px 10px;white-space:nowrap}
 #buildStatus .btn{min-height:36px}
 #buildStatus .btn:disabled{opacity:.6;cursor:default}

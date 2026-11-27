@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { pick, R, V3 } from '../utils/math';
 import {
   gableTex,
+  mosqueWall,
   shadowed,
   stoneWall,
   timberWall,
@@ -55,6 +56,7 @@ export interface StallRecord {
 export interface WorldBuildings {
   houses: HouseRecord[];
   chapel: { door: TileCoord; g: THREE.Group };
+  mosque: { door: TileCoord; g: THREE.Group };
   mill: { wheel: THREE.Group; door: TileCoord; splash: THREE.Vector3 };
   forge: { anvil: THREE.Vector3; light: THREE.PointLight; spot: TileCoord };
   stalls: StallRecord[];
@@ -313,6 +315,144 @@ export function buildBuildings(
     lightSources.push(W(3.2, 1.2, 0));
     for (let i = 32; i <= 36; i++) for (let j = 9; j <= 11; j++) grid.block(i, j);
     return { door: [31, 10] as TileCoord, g };
+  })();
+
+  const mosque = (() => {
+    const g = new THREE.Group();
+    g.position.set(wx(20), TH, wz(12));
+    g.rotation.y = FACE.E.r;
+    scene.add(g);
+
+    const plinth = shadowed(new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.16, 2.8), MAT.sandstone));
+    plinth.position.y = 0.08;
+    g.add(plinth);
+
+    const frontT = mosqueWall(2.7, 2.3, {
+      door: true,
+      arches: [
+        [0.2, 0.34, 4, 10],
+        [0.8, 0.34, 4, 10],
+      ],
+    });
+    const backT = mosqueWall(2.7, 2.3, {
+      arches: [
+        [0.26, 0.32, 4, 10],
+        [0.5, 0.28, 5, 11],
+        [0.74, 0.32, 4, 10],
+      ],
+    });
+    const sideT = () =>
+      mosqueWall(2.4, 2.3, {
+        arches: [
+          [0.28, 0.32, 4, 10],
+          [0.72, 0.32, 4, 10],
+        ],
+      });
+
+    const hall = shadowed(
+      new THREE.Mesh(new THREE.BoxGeometry(2.7, 2.3, 2.4), [
+        winMat(sideT()),
+        winMat(sideT()),
+        MAT.sandstone,
+        MAT.sandstone,
+        winMat(frontT),
+        winMat(backT),
+      ])
+    );
+    hall.position.y = 1.31;
+    g.add(hall);
+
+    const cornice = shadowed(new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.18, 2.6), MAT.sandstone));
+    cornice.position.y = 2.55;
+    g.add(cornice);
+
+    const domeMat = roofMat('#2b8078');
+    const drum = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.86, 0.9, 0.48, 12), MAT.sandstone));
+    drum.position.set(0, 2.88, -0.05);
+    g.add(drum);
+
+    const dome = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.88, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.56), domeMat));
+    dome.position.set(0, 3.08, -0.05);
+    g.add(dome);
+
+    const addCrescent = (x: number, y: number, z: number, scale = 1) => {
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.028 * scale, 0.04 * scale, 0.42 * scale, 6), MAT.gold);
+      mast.position.set(x, y, z);
+      g.add(mast);
+      const orb = new THREE.Mesh(new THREE.SphereGeometry(0.06 * scale, 8, 6), MAT.gold);
+      orb.position.set(x, y + 0.1 * scale, z);
+      g.add(orb);
+      const crescent = new THREE.Mesh(
+        new THREE.TorusGeometry(0.13 * scale, 0.026 * scale, 6, 12, Math.PI * 1.38),
+        MAT.gold
+      );
+      crescent.position.set(x, y + 0.31 * scale, z);
+      crescent.rotation.z = -Math.PI * 0.19;
+      g.add(crescent);
+    };
+    addCrescent(0, 4.12, -0.05, 1);
+
+    const mx = -1.18;
+    const mz = 1.02;
+    const mBase = shadowed(
+      new THREE.Mesh(
+        new THREE.BoxGeometry(0.62, 2.7, 0.62),
+        winMat(mosqueWall(0.7, 2.7, { arches: [[0.5, 0.3, 3, 7]] }))
+      )
+    );
+    mBase.position.set(mx, 1.35, mz);
+    g.add(mBase);
+
+    const mShaft = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.3, 1.7, 8), MAT.sandstone));
+    mShaft.position.set(mx, 3.55, mz);
+    g.add(mShaft);
+
+    const balcony = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.32, 0.22, 8), MAT.sandstone));
+    balcony.position.set(mx, 4.45, mz);
+    g.add(balcony);
+
+    const bTrim = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.43, 0.43, 0.08, 8), domeMat));
+    bTrim.position.set(mx, 4.56, mz);
+    g.add(bTrim);
+
+    const mTier = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.72, 8), MAT.sandstone));
+    mTier.position.set(mx, 4.92, mz);
+    g.add(mTier);
+
+    const mCap = shadowed(
+      new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.62), domeMat)
+    );
+    mCap.position.set(mx, 5.26, mz);
+    g.add(mCap);
+    addCrescent(mx, 5.62, mz, 0.72);
+
+    for (const sx of [-0.54, 0.54]) {
+      const col = shadowed(new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 1.9, 8), MAT.sandstone));
+      col.position.set(sx, 1.11, 1.42);
+      g.add(col);
+    }
+    const portico = shadowed(new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.16, 0.48), MAT.sandstone));
+    portico.position.set(0, 2.08, 1.38);
+    g.add(portico);
+    const porticoCap = shadowed(new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.07, 0.52), domeMat));
+    porticoCap.position.set(0, 2.18, 1.38);
+    g.add(porticoCap);
+
+    const lan = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.24, 0.16), MAT.lantern);
+    lan.position.set(0.58, 1.42, 1.54);
+    g.add(lan);
+
+    g.updateMatrixWorld(true);
+    const W = (x: number, y: number, z: number) => g.localToWorld(new V3(x, y, z));
+    glowSprite(W(0, 1.45, -1.3), 0xffcc70, 1.4, 0.7, 'win');
+    glowSprite(W(1.42, 1.45, 0), 0xffcc70, 1.4, 0.7, 'win');
+    glowSprite(W(-1.42, 1.45, 0), 0xffcc70, 1.4, 0.7, 'win');
+    const lp = W(0.58, 1.42, 1.62);
+    glowSprite(lp, 0xffb060, 2.1, 1, 'lamp');
+    lightSources.push(lp);
+
+    for (let i = 19; i <= 21; i++) for (let j = 11; j <= 13; j++) grid.block(i, j);
+    return { door: [22, 12] as TileCoord, g };
   })();
 
   const mill = (() => {
@@ -660,6 +800,7 @@ export function buildBuildings(
   const doorTiles: TileCoord[] = [
     ...houses.map((h) => h.door),
     chapel.door,
+    mosque.door,
     mill.door,
     forge.spot,
     ...stalls.map((s) => s.spot),
@@ -669,6 +810,7 @@ export function buildBuildings(
   return {
     houses,
     chapel,
+    mosque,
     mill,
     forge,
     stalls,

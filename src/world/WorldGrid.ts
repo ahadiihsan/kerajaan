@@ -132,10 +132,12 @@ export class WorldGrid {
     for (const [i, j] of HOUSES) this.flatten(i - 1, j - 1, i + 1, j + 1);
     this.flatten(18, 29, 20, 31);
     this.flatten(12, 7, 15, 9);
+    this.flatten(18, 10, 22, 14);
 
     this.carve([[0, 24], [20, 24]]);
     this.carve([[0, 25], [20, 25]]);
     this.carve([[27, 24], [27, 10], [31, 10]]);
+    this.carve([[27, 12], [22, 12]]);
     this.carve([[27, 24], [30, 24]]);
     this.carve([[15, 8], [17, 8], [17, 23]], 'dirt');
     this.carve([[4, 23], [4, 19]], 'dirt');

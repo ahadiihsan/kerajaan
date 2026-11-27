@@ -36,6 +36,7 @@ const ROLE: Record<Exclude<CharacterRole, 'Traveler'>, RoleTemplate> = {
   Bard: { cls: 'Wandering Bard', hp: [50, 65], st: [[8, 10], [13, 16], [12, 15], [16, 20]], lv: [5, 12], gold: [8, 30], inv: [['🪕', 'Old Lute', 1], ['📜', 'Song Sheets', 7], ['🍺', 'Mug of Ale', 1]] },
   Child: { cls: 'Village Child', hp: [28, 40], st: [[5, 8], [12, 16], [8, 12], [12, 16]], lv: [1, 2], gold: [0, 6], inv: [['🪀', 'Wooden Toy', 1], ['🍬', 'Honey Sweets', 3], ['🐸', 'Pet Frog', 1]] },
   Priest: { cls: 'Chapel Priest', hp: [55, 75], st: [[7, 10], [8, 11], [15, 19], [13, 17]], lv: [7, 13], gold: [20, 70], inv: [['📖', 'Holy Tome', 1], ['🕯️', 'Blessed Candles', 6], ['🔔', 'Hand Bell', 1]] },
+  Imam: { cls: 'Mosque Imam', hp: [55, 75], st: [[7, 10], [9, 12], [15, 19], [14, 18]], lv: [7, 13], gold: [20, 70], inv: [['📜', 'Calligraphy Scroll', 1], ['📿', 'Prayer Beads', 1], ['🏮', 'Brass Lantern', 1]] },
 };
 
 const TOWN_ITEMS: InvItemTuple[] = [
@@ -48,6 +49,7 @@ const POIS: Array<[TileCoord, string]> = [
   [[21, 27], '🛒 Browsing the market'],
   [[25, 23], '🛒 Haggling with a merchant'],
   [[31, 10], '🙏 Visiting the chapel'],
+  [[22, 12], '🕌 Visiting the mosque'],
   [[6, 24], '🌊 Watching the river'],
   [[15, 8], '🌾 Taking grain to the mill'],
   [[22, 26], '💬 Gossiping in the plaza'],
@@ -322,6 +324,13 @@ export class Villager {
           );
         } else wander();
         break;
+      case 'Imam':
+        if (r < 0.6) {
+          this.goTo(buildings.mosque.door, '🕌 Walking to the mosque', false, () =>
+            this.startWork('pray', '🤲 Leading prayer', R(8, 12))
+          );
+        } else wander();
+        break;
       case 'Bard':
         if (r < 0.55) {
           this.goTo(grid.randomReach(4), '🎵 Looking for an audience', false, () =>
@@ -546,9 +555,15 @@ const ROSTER: Array<[Exclude<CharacterRole, 'Traveler'>, number]> = [
   ['Bard', 1],
   ['Child', 3],
   ['Priest', 1],
+  ['Imam', 1],
 ];
 
-export function createVillagers(houses: HouseRecord[], chapelDoor: TileCoord, ctx: VillagerContext): Villager[] {
+export function createVillagers(
+  houses: HouseRecord[],
+  chapelDoor: TileCoord,
+  mosqueDoor: TileCoord,
+  ctx: VillagerContext
+): Villager[] {
   const villagers: Villager[] = [];
   let id = 0;
   const homes = houses.slice(0, 8);
@@ -561,7 +576,9 @@ export function createVillagers(houses: HouseRecord[], chapelDoor: TileCoord, ct
             ? houses[7]
             : role === 'Priest'
               ? { door: chapelDoor }
-              : homes[id % homes.length];
+              : role === 'Imam'
+                ? { door: mosqueDoor }
+                : homes[id % homes.length];
       villagers.push(new Villager(id++, role, home, ctx));
     }
   }

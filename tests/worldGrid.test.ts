@@ -55,5 +55,11 @@ describe('WorldGrid', () => {
     // Up the stairs to the chapel mesa
     const toChapel = grid.findPath(23, 24, 31, 10);
     assert.ok(toChapel && toChapel.length > 10);
+
+    // Along the cobble branch to the mosque entrance
+    assert.equal(grid.TYPE[idx(22, 12)], T.COBBLE);
+    assert.equal(grid.H[idx(20, 12)], 1);
+    const toMosque = grid.findPath(23, 24, 22, 12);
+    assert.ok(toMosque && toMosque.length > 10);
   });
 });
