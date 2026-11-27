@@ -530,9 +530,13 @@ export class HUD {
     }
     const visibleCast = this.recastIn > 0 ? null : this.cast;
     this.hero.fishingPose = visibleCast ? 'cast' : this.catchTime > 0.18 ? 'hold' : null;
+    this.hero.fishingElapsed = visibleCast?.elapsed ?? 0;
+    this.hero.fishingReeling = this.fishingRound !== null;
+    if (visibleCast) this.hero.faceToward(visibleCast.target.x, visibleCast.target.z);
     this.fishingVisuals.update(
       this.hero.mesh.position, this.engine.camRight, this.hero.face, this.hero.rodEquipped,
-      visibleCast, this.catchTime, this.catchColor,
+      visibleCast, this.catchTime, this.catchColor, this.hero.getFishingHand(), this.hero.equipmentAim,
+      this.hero.equipment.appearance.rod,
     );
   }
 

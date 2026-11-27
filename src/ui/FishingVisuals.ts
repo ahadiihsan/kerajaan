@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { clamp } from '../utils/math';
 import { itemIcon } from './ItemIcons';
+import type { ToolAppearance } from '../entities/PlayerEquipment';
 
 export const CAST_FLIGHT = 0.55;
 export const BITE_ANIMATION = 0.36;
@@ -30,7 +31,6 @@ export class FishingVisuals {
   private readonly hand = new THREE.Vector3();
   private readonly tip = new THREE.Vector3();
   private readonly direction = new THREE.Vector3();
-  private readonly forward = new THREE.Vector3();
   private readonly up = new THREE.Vector3(0, 1, 0);
 
   constructor(scene: THREE.Scene) {
@@ -48,14 +48,16 @@ export class FishingVisuals {
   update(
     position: THREE.Vector3, right: THREE.Vector3, face: number, equipped: boolean,
     cast: { target: THREE.Vector3; elapsed: number; biteAt: number } | null,
-    catchTime: number, fishColor: string,
+    catchTime: number, fishColor: string, handSocket: THREE.Vector3, aim: THREE.Vector3,
+    appearance: ToolAppearance,
   ): void {
-    this.rod.visible = equipped && catchTime <= 0;
+    this.rod.visible = equipped;
+    this.rod.material.color.setHex(appearance.woodColor);
+    this.line.material.color.setHex(appearance.metalColor);
+    this.rod.scale.y = appearance.scale;
     this.bobber.visible = this.line.visible = cast !== null;
     this.caught.visible = catchTime > 0;
-    this.forward.set(-right.z, 0, right.x);
-    this.hand.copy(position).addScaledVector(right, face * 0.4).addScaledVector(this.forward, 0.16);
-    this.hand.y += cast ? 0.79 : 0.48;
+    this.hand.copy(handSocket);
     if (this.caught.visible) {
       const lift = Math.sin(clamp(catchTime / 0.36, 0, 1) * Math.PI / 2);
       this.caught.position.copy(this.hand).addScaledVector(right, face * 0.12);
@@ -64,7 +66,7 @@ export class FishingVisuals {
       this.caught.material.color.set(fishColor);
     }
 
-    this.direction.copy(right).multiplyScalar(face * 0.35);
+    this.direction.copy(aim).multiplyScalar(0.35);
     this.direction.y = 0.94;
     if (cast) {
       this.direction.subVectors(cast.target, this.hand);
@@ -78,8 +80,12 @@ export class FishingVisuals {
         this.direction.y = 0.53 + 0.27 * Math.sin(clamp((cast.elapsed - cast.biteAt) / BITE_ANIMATION, 0, 1) * Math.PI);
       }
     }
+    if (catchTime > 0) {
+      this.direction.copy(aim).multiplyScalar(-0.15);
+      this.direction.y = 1;
+    }
     this.direction.normalize();
-    this.tip.copy(this.hand).add(this.direction);
+    this.tip.copy(this.hand).addScaledVector(this.direction, appearance.scale);
     this.rod.position.copy(this.hand).lerp(this.tip, 0.5);
     this.rod.quaternion.setFromUnitVectors(this.up, this.direction);
 

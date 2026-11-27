@@ -4,3 +4,5 @@ dist
 *.log
 .firebase
 firebase-debug.log*
+__pycache__/
+*.py[cod]

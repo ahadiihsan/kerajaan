@@ -10,6 +10,8 @@ import type { AudioEngine } from '../core/AudioEngine';
 import type { Pool } from '../core/Particles';
 import type { Villager } from './Villager';
 import { characterSprite, DEFAULT_TRAVELER_PALETTE, type TravelerPalette } from './Sprites';
+import { PlayerSheet } from './PlayerSheet';
+import { PlayerEquipment } from './PlayerEquipment';
 import { BOW_IDLE_FRAME, BOW_RAISE_FRAME, FISH_CAST_FRAME, FISH_HOLD_FRAME, TRAVELER_FRAME_COUNT } from './TravelerFrames';
 
 export const STRIKES_TO_FELL = 3;
@@ -98,6 +100,12 @@ export interface HeroCoopBridge {
 }
 
 export class HeroController {
+  private readonly playerSheet: PlayerSheet;
+  public readonly equipment: PlayerEquipment;
+  public readonly equipmentAim = new THREE.Vector3(0, 0, 1);
+  private facingDX = 0;
+  private facingDZ = 1;
+  private idleTime = 0;
   public readonly sheet: HTMLCanvasElement;
   public readonly tex: THREE.CanvasTexture;
   public readonly mat: THREE.MeshBasicMaterial;
@@ -132,6 +140,8 @@ export class HeroController {
   public queuedMove: MoveDirection | null = null;
   public rodEquipped = false;
   public fishingPose: 'cast' | 'hold' | null = null;
+  public fishingElapsed = 0;
+  public fishingReeling = false;
   public axeEquipped = false;
   public bowEquipped = false;
   public placingBlueprint = false;
@@ -173,6 +183,16 @@ export class HeroController {
   public onBlueprintModeChange?: (active: boolean) => void;
   public onAxeModeChange?: (active: boolean) => void;
   public onBowModeChange?: (active: boolean) => void;
+
+  public getFishingHand(): THREE.Vector3 {
+    return this.playerSheet.handSocket('fish', new V3(), 'right');
+  }
+
+  public faceToward(x: number, z: number): void {
+    if (Math.hypot(x - this.x, z - this.z) < 0.001) return;
+    this.facingDX = x - this.x;
+    this.facingDZ = z - this.z;
+  }
 
   constructor(opts: {
     scene: THREE.Scene;
@@ -226,6 +246,8 @@ export class HeroController {
     this.tex = sprite.tex;
     this.mat = sprite.mat;
     this.mesh = sprite.mesh;
+    this.playerSheet = new PlayerSheet(sprite);
+    this.equipment = new PlayerEquipment(opts.scene);
 
     const [spawnI, spawnJ] = opts.grid.reachList[0] ?? [22, 25];
     this.i = spawnI;
@@ -677,12 +699,13 @@ export class HeroController {
 
   private makeArrowMesh(): THREE.Group {
     const g = new THREE.Group();
-    const shaft = new THREE.Mesh(this.arrowShaftGeo, this.arrowShaftMat);
+    const shaft = new THREE.Mesh(this.arrowShaftGeo, this.equipment.arrowWood);
     shaft.castShadow = true;
     g.add(shaft);
-    const tip = new THREE.Mesh(this.arrowTipGeo, this.arrowTipMat);
+    const tip = new THREE.Mesh(this.arrowTipGeo, this.equipment.arrowMetal);
     tip.position.z = 0.38;
     g.add(tip);
+    g.scale.setScalar(this.equipment.appearance.arrow.scale);
     for (const rotZ of [0, Math.PI / 2]) {
       const f = new THREE.Mesh(this.arrowFletchGeo, this.arrowFletchMat);
       f.position.z = -0.26;
@@ -774,12 +797,14 @@ export class HeroController {
   }
 
   private faceShot(target: THREE.Vector3, camRight: THREE.Vector3): void {
+    this.faceToward(target.x, target.z);
     const horizontal = (target.x - this.x) * camRight.x + (target.z - this.z) * camRight.z;
     if (Math.abs(horizontal) > 0.1) this.face = horizontal < 0 ? -1 : 1;
   }
 
   private releaseArrow(target: THREE.Vector3): void {
-    const origin = new V3(this.x, this.grid.groundY(this.x, this.z) + 0.8, this.z);
+    this.equipment.bow.updateMatrixWorld(true);
+    const origin = this.equipment.nockedArrow.localToWorld(new V3(0, 0, 0.42));
     const dx = target.x - origin.x;
     const dz = target.z - origin.z;
     const dist = Math.hypot(dx, dz);
@@ -986,6 +1011,7 @@ export class HeroController {
       : building
         ? action.target.mesh.position
         : action.target.origin;
+    this.faceToward(target.x, target.z);
     const horizontal = (target.x - this.x) * camRight.x + (target.z - this.z) * camRight.z;
     if (Math.abs(horizontal) > 0.15) this.face = (Math.sign(horizontal) || 1) as 1 | -1;
     const previous = action.elapsed;
@@ -1068,6 +1094,8 @@ export class HeroController {
         dz = j - this.j;
       }
       if ((dx || dz) && this.grid.canStep(this.i, this.j, dx, dz)) {
+        this.facingDX = dx;
+        this.facingDZ = dz;
         this.step = { dx, dz, progress: 0 };
         const horizontal = dx * camRight.x + dz * camRight.z;
         if (Math.abs(horizontal) > 0.25) this.face = (Math.sign(horizontal) || 1) as 1 | -1;
@@ -1075,6 +1103,8 @@ export class HeroController {
     }
 
     let frame = 0;
+    const moving = this.step !== null;
+    this.idleTime = moving ? 0 : this.idleTime + dt;
     if (this.step) {
       const step = this.step;
       step.progress = Math.min(1, step.progress + dt * 4.5);
@@ -1143,6 +1173,20 @@ export class HeroController {
     this.mesh.rotation.y = camYaw;
     this.mesh.scale.x = this.face;
     this.tex.offset.x = frame * this.tex.repeat.x;
+    const pose = {
+      chopTime: this.interaction?.kind === 'chop' ? this.interaction.elapsed : null,
+      shotTime: this.shotTime,
+      axeEquipped: this.axeEquipped,
+      bowEquipped: this.bowEquipped,
+      rodEquipped: this.rodEquipped,
+      fishingPose: this.fishingPose,
+      fishingElapsed: this.fishingElapsed,
+      fishingReeling: this.fishingReeling,
+    };
+    this.playerSheet.update(this.facingDX, this.facingDZ, camYaw, this.walkTime, moving, pose, this.idleTime);
+    this.equipmentAim.set(this.facingDX, 0, this.facingDZ).normalize();
+    this.equipment.update(pose, this.equipmentAim, this.playerSheet.handSocket('chop'), this.playerSheet.handSocket('bow'), this.playerSheet.ready,
+      this.playerSheet.handSocket('chop', new V3(), 'right'), this.playerSheet.handSocket('bow', new V3(), 'right'));
     this.marker.position.set(this.x, y + 1.85, this.z);
     if (this.carryMesh) {
       this.carryMesh.visible = this.carrying !== null;
