@@ -68,3 +68,5 @@ if __name__ == '__main__':
     north_bow = prepare('bow', ROOT / 'assets-raw/characters/rowan-bow-north-v3/body-poses.png', 2, 2, write=False)
     right_arm = prepare('bow', ROOT / 'assets-raw/characters/rowan-bow-right-arm-v4/body-poses.png', 2, 2, write=False)
     export_rig(atlases, clean, DESTINATION, points, south_bow, rear_bow, handed_bow, north_bow, right_arm)
+    from apply_player_appearance import apply_appearance
+    apply_appearance()
