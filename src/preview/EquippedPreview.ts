@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { PlayerEquipment } from '../entities/PlayerEquipment';
 import { FishingVisuals } from '../ui/FishingVisuals';
-import type { PlayerPose } from '../entities/PlayerSheet';
+import { playerHandDepth, type PlayerPose } from '../entities/PlayerSheet';
 import grips from '../assets/characters/hand-grips.json';
 
 type Action = keyof typeof grips;
@@ -79,12 +79,12 @@ export class EquippedPreview {
     if (this.material.map !== texture) { this.material.map = texture; this.material.needsUpdate = true; }
     this.body.geometry = action === 'walk' ? this.walkGeometry : this.actionGeometry;
     const points = grips[action][row][frame];
-    const depth = Math.cos(row * Math.PI / 4) < -0.3 ? -0.045 : 0.045;
+    const depth = playerHandDepth(action, row);
     this.left.set(points.left[0], points.left[1], depth);
     this.right.set(points.right[0], points.right[1], depth);
     this.aim.set(Math.sin(row * Math.PI / 4), 0, Math.cos(row * Math.PI / 4));
     const equipped = { ...pose, axeEquipped: item === 'axe', bowEquipped: item === 'bow', rodEquipped: item === 'rod' };
-    this.equipment.update(equipped, this.aim, this.left, this.left, true, this.right, this.right);
+    this.equipment.update(equipped, this.aim, this.left, this.left, true, this.right, this.right, action === 'bow');
     this.target.copy(this.aim).multiplyScalar(1.8);
     const cast = item === 'rod' && equipped.fishingPose === 'cast'
       ? { target: this.target, elapsed: equipped.fishingElapsed, biteAt: 1.3 } : null;

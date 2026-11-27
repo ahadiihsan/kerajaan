@@ -46,6 +46,11 @@ export function playerSheetRow(dx: number, dz: number, cameraYaw: number): numbe
   return (Math.round(Math.atan2(right, down) / (Math.PI / 4)) + 8) % 8;
 }
 
+export function playerHandDepth(sheet: keyof typeof handGrips, row: number): number {
+  if (sheet === 'bow' && (row === 5 || row === 6 || row === 7)) return 0;
+  return Math.cos(row * Math.PI / 4) < -0.3 ? -0.045 : 0.045;
+}
+
 export class PlayerSheet {
   private loaded = false;
   private readonly maps: Partial<Record<keyof typeof actionUrls, THREE.Texture>> = {};
@@ -60,9 +65,13 @@ export class PlayerSheet {
     return this.loaded;
   }
 
+  public get bowPoseReady(): boolean {
+    return this.loaded && this.currentSheet === 'bow';
+  }
+
   public handSocket(action: 'chop' | 'bow' | 'fish', target = new THREE.Vector3(), hand: 'left' | 'right' = 'left'): THREE.Vector3 {
     const point = handGrips[this.currentSheet][this.currentRow][this.currentColumn][hand];
-    const depth = Math.cos(this.currentRow * Math.PI / 4) < -0.3 ? -0.045 : 0.045;
+    const depth = playerHandDepth(this.currentSheet, this.currentRow);
     target.set(point[0], point[1], depth);
     this.sprite.mesh.updateMatrixWorld(true);
     return this.sprite.mesh.localToWorld(target);

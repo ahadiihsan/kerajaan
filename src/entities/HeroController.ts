@@ -1186,7 +1186,7 @@ export class HeroController {
     this.playerSheet.update(this.facingDX, this.facingDZ, camYaw, this.walkTime, moving, pose, this.idleTime);
     this.equipmentAim.set(this.facingDX, 0, this.facingDZ).normalize();
     this.equipment.update(pose, this.equipmentAim, this.playerSheet.handSocket('chop'), this.playerSheet.handSocket('bow'), this.playerSheet.ready,
-      this.playerSheet.handSocket('chop', new V3(), 'right'), this.playerSheet.handSocket('bow', new V3(), 'right'));
+      this.playerSheet.handSocket('chop', new V3(), 'right'), this.playerSheet.handSocket('bow', new V3(), 'right'), this.playerSheet.bowPoseReady);
     this.marker.position.set(this.x, y + 1.85, this.z);
     if (this.carryMesh) {
       this.carryMesh.visible = this.carrying !== null;

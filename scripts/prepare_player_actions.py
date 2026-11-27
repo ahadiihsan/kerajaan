@@ -11,7 +11,7 @@ SOURCE = ROOT / 'assets-raw/characters/rowan-actions-v1'
 DESTINATION = ROOT / 'src/assets/characters'
 
 
-def prepare(name, source_override=None, column_override=None):
+def prepare(name, source_override=None, column_override=None, row_count=8, write=True):
     revised = SOURCE / f'{name}-v2.png'
     body = SOURCE / f'{name}-body.png'
     source = body if body.exists() else revised if revised.exists() else SOURCE / f'{name}.png'
@@ -29,11 +29,11 @@ def prepare(name, source_override=None, column_override=None):
         ys, xs = region
         column = int((xs.start + xs.stop) / 2 / (image.width / column_count))
         columns[column].append((ys, xs, component))
-    assert all(len(column) == 8 for column in columns), [len(column) for column in columns]
+    assert all(len(column) == row_count for column in columns), [len(column) for column in columns]
     for column in columns:
         column.sort(key=lambda frame: frame[0].stop)
-    atlas = Image.new('RGBA', (320 * column_count, 2560))
-    for row in range(8):
+    atlas = Image.new('RGBA', (320 * column_count, 320 * row_count))
+    for row in range(row_count):
         neutral_y, _, _ = columns[0][row]
         scale = 168 / (neutral_y.stop - neutral_y.start)
         for column in range(column_count):
@@ -49,15 +49,22 @@ def prepare(name, source_override=None, column_override=None):
             assert x >= 0 and x + sprite.width <= 320 and y >= 0, (name, row, column, x, y)
             atlas.alpha_composite(sprite, (column * 320 + x, row * 320 + y))
     destination = DESTINATION / f'rowan-{name}{"-body" if body.exists() else ""}.png'
-    atlas.save(destination, optimize=True)
-    print(f'{destination}: {column_count * 8} frames, transparent, feet aligned; source={source.name}')
+    if write:
+        atlas.save(destination, optimize=True)
+    operation = 'Wrote' if write else 'Prepared in memory'
+    print(f'{operation} {destination.name}: {column_count * row_count} frames, transparent, feet aligned; source={source.name}')
     return atlas
 
 
 if __name__ == '__main__':
     from player_pose_rig import export_rig
-    atlases = {action: prepare(action) for action in ('chop', 'fish', 'bow', 'idle')}
-    clean = prepare('chop', SOURCE / 'chop-clean.png', 4)
+    atlases = {action: prepare(action, write=False) for action in ('chop', 'fish', 'bow', 'idle')}
+    clean = prepare('chop', SOURCE / 'chop-clean.png', 4, write=False)
     clean.save(SOURCE / 'chop-clean-normalized.png')
     points = json.loads((SOURCE / 'chop-clean-grips.json').read_text())
-    export_rig(atlases, clean, DESTINATION, points)
+    south_bow = prepare('bow', ROOT / 'assets-raw/characters/rowan-bow-south-v2/body-poses.png', 2, 2, write=False)
+    rear_bow = prepare('bow', ROOT / 'assets-raw/characters/rowan-bow-rear-v2/body-poses.png', 4, 2, write=False)
+    handed_bow = prepare('bow', ROOT / 'assets-raw/characters/rowan-bow-handedness-v1/body-poses.png', 4, 3, write=False)
+    north_bow = prepare('bow', ROOT / 'assets-raw/characters/rowan-bow-north-v3/body-poses.png', 2, 2, write=False)
+    right_arm = prepare('bow', ROOT / 'assets-raw/characters/rowan-bow-right-arm-v4/body-poses.png', 2, 2, write=False)
+    export_rig(atlases, clean, DESTINATION, points, south_bow, rear_bow, handed_bow, north_bow, right_arm)

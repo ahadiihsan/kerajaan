@@ -1,6 +1,6 @@
 import json
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 
 BOW = [
@@ -12,6 +12,31 @@ BOW = [
     [((108,242),(127,265)),((103,219),(153,229)),((100,206),(163,220)),((103,214),(194,223))],
     [((124,249),(166,267)),((122,232),(178,238)),((94,224),(192,226)),((114,227),(194,229))],
     [((191,263),(122,260)),((125,242),(183,233)),((108,246),(190,227)),((112,223),(193,233))],
+]
+
+SOUTH_BOW = [
+    ((173,253),(148,253)),
+    ((160,247),(160,228)),
+    ((160,244),(160,225)),
+    ((160,244),(160,223)),
+]
+
+REAR_BOW = [
+    [((160,254),(160,254)),((160,219),(160,215)),((160,215),(160,208)),((160,215),(160,207))],
+    [((118,271),(153,265)),((98,202),(143,215)),((95,201),(143,211)),((93,208),(143,210))],
+]
+
+HANDED_BOW_ROWS = [3,6,7]
+HANDED_BOW = [
+    [((179,264),(197,261)),((227,207),(190,219)),((236,201),(157,217)),((238,200),(156,216))],
+    [((149,262),(125,260)),((104,233),(145,218)),((83,231),(145,217)),((84,231),(180,222))],
+    [((158,261),(118,260)),((102,235),(130,221)),((87,238),(147,216)),((86,239),(192,218))],
+]
+NORTH_BOW = [
+    ((114,251),(198,273)),
+    ((160,180),(160,180)),
+    ((160,174),(160,190)),
+    ((160,174),(160,188)),
 ]
 
 FISH = [
@@ -53,7 +78,7 @@ def grips(left, right):
     return {'left': world_point(left), 'right': world_point(right)}
 
 
-def export_rig(atlases, clean, destination, clean_points):
+def export_rig(atlases, clean, destination, clean_points, south_bow, rear_bow, handed_bow, north_bow, right_arm):
     metadata = {}
     for action in ('bow', 'fish', 'chop'):
         result = Image.new('RGBA', (2560, 2560))
@@ -67,6 +92,26 @@ def export_rig(atlases, clean, destination, clean_points):
                     stages = [1,1,1,2,2,3,1,1]
                 points = BOW[row]
                 source = atlases[action]
+                if row == 0:
+                    sources = [0,1,1,2,2,3,0,0]
+                    stages = sources
+                    points = SOUTH_BOW
+                    source = south_bow
+                if row in (4,5):
+                    sources = [0,1,1,2,2,3,0,0]
+                    stages = sources
+                    points = REAR_BOW[row-4]
+                    source = rear_bow
+                if row in HANDED_BOW_ROWS:
+                    sources = [0,1,1,2,2,3,0,0]
+                    stages = sources
+                    points = HANDED_BOW[HANDED_BOW_ROWS.index(row)]
+                    source = handed_bow
+                if row == 4:
+                    sources = [0,1,1,2,2,3,0,0]
+                    stages = sources
+                    points = NORTH_BOW
+                    source = north_bow
             elif action == 'fish':
                 sources = [0,2,2,3,3,5,6,7]
                 stages = [0,1,1,2,2,3,4,5]
@@ -87,8 +132,29 @@ def export_rig(atlases, clean, destination, clean_points):
                 source = clean
             poses = []
             for column, (source_column, stage) in enumerate(zip(sources, stages)):
-                cell = source.crop((source_column*320,row*320,(source_column+1)*320,(row+1)*320))
+                if source is handed_bow:
+                    sx, sy = source_column * 320, HANDED_BOW_ROWS.index(row) * 320
+                    cell = source.crop((sx,sy,sx+320,sy+320))
+                elif source is north_bow:
+                    sx, sy = source_column % 2 * 320, source_column // 2 * 320
+                    cell = source.crop((sx,sy,sx+320,sy+320))
+                elif source is rear_bow:
+                    sx, sy = source_column * 320, (row - 4) * 320
+                    cell = source.crop((sx,sy,sx+320,sy+320))
+                elif source is south_bow:
+                    sx, sy = source_column % 2 * 320, source_column // 2 * 320
+                    cell = source.crop((sx,sy,sx+320,sy+320))
+                else:
+                    cell = source.crop((source_column*320,row*320,(source_column+1)*320,(row+1)*320))
                 left, right = points[stage]
+                arm_cells = {(6,5): 0, (7,3): 1, (7,4): 2, (7,5): 3}
+                if action == 'bow' and (row,column) in arm_cells:
+                    index = arm_cells[(row,column)]
+                    sx, sy = index % 2 * 320, index // 2 * 320
+                    arm = right_arm.crop((sx,sy,sx+320,sy+320))
+                    mask = Image.new('L', (320,320))
+                    ImageDraw.Draw(mask).polygon([(156,216),(166,207),(183,209),(222,210),(224,239),(194,247),(178,239),(165,227)], fill=255)
+                    cell.paste(arm, (0,0), mask)
                 if action == 'chop' and stage == 0 and row == 4:
                     cell = atlases['chop'].crop((0,row*320,320,(row+1)*320))
                     left, right = {3:((190,256),(215,265)),4:((116,256),(199,256)),5:((124,261),(102,271))}[row]
@@ -96,6 +162,7 @@ def export_rig(atlases, clean, destination, clean_points):
                 poses.append(grips(left,right))
             metadata[action].append(poses)
         result.save(destination/f'rowan-{action}-body.png', optimize=True)
+    atlases['idle'].save(destination/'rowan-idle.png', optimize=True)
     metadata['walk'] = []
     for row in range(8):
         poses = []

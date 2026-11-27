@@ -1,5 +1,7 @@
 import './style.css';
 import { AXE_SPRITE_URL } from '../entities/AxeSprite';
+import { BOW_SPRITE_URL } from '../entities/BowSprite';
+import { ARROW_SPRITE_URL } from '../entities/ArrowSprite';
 import { EquippedPreview, inspectionPose, type PreviewItem } from './EquippedPreview';
 import grips from '../assets/characters/hand-grips.json';
 import { playerActionFrame, type PlayerPose } from '../entities/PlayerSheet';
@@ -39,9 +41,9 @@ app.innerHTML = `
       <label>Item<select id="item"><option value="auto">Match animation</option><option value="none">Body only</option><option value="axe">Axe</option><option value="bow">Bow + arrow</option><option value="rod">Fishing rod</option></select></label>
       <label>Equipped camera<select id="pitch"><option value="37.2">Game angle · 37.2°</option><option value="0">Front · 0°</option><option value="60">High · 60°</option></select></label>
       <label class="check"><input id="grips" type="checkbox" /> Hand grips</label>
-      <label class="check"><input id="guides" type="checkbox" checked /> Center guides</label>
+      <label class="check"><input id="guides" type="checkbox" /> Center guides</label>
     </section>
-    <p class="notice">Equipped views use the game’s item artwork and hand attachments. The axe and fishing rod use 2D pixel-art sprites. Choose Body only to compare poses. The full atlas below stays body-only. Fishing uses a staged cast, reel and catch demo.</p>
+    <p class="notice">Equipped views use the game’s item artwork and hand attachments. The axe, fantasy bow and fishing rod use 2D pixel-art sprites. Choose Body only to compare poses. The full atlas below stays body-only. Fishing uses a staged cast, reel and catch demo.</p>
     <p id="status" role="status">Loading sprite sheet…</p>
     <div class="workspace">
       <section class="panel focus-panel" aria-labelledby="focus-title">
@@ -49,7 +51,7 @@ app.innerHTML = `
         <div class="stage checker" id="focus-stage"><canvas id="focus" width="512" height="512" aria-label="Selected sprite frame"></canvas></div>
         <div class="transport"><button id="previous" aria-label="Previous frame">←</button><button id="play">Pause</button><button id="next" aria-label="Next frame">→</button><label>Frame<input id="frame" type="range" min="0" max="7" value="0" /></label></div>
         <div class="focus-controls"><label>Direction<select id="direction">${directions.map((name, i) => `<option value="${i}">${i + 1} · ${name}</option>`).join('')}</select></label><label>Zoom<select id="zoom"><option value="1">1×</option><option value="2" selected>2×</option><option value="3">3×</option><option value="4">4×</option></select></label></div>
-        <p id="coordinates" class="mono"></p><a id="item-art" class="button" href="${AXE_SPRITE_URL}" target="_blank" rel="noopener" hidden>Open 8-direction axe sheet ↗</a><p class="legend"><span class="left-dot"></span> Anatomical left <span class="right-dot"></span> Anatomical right</p>
+        <p id="coordinates" class="mono"></p><a id="item-art" class="button" href="${AXE_SPRITE_URL}" target="_blank" rel="noopener" hidden>Open 8-direction axe sheet ↗</a> <a id="arrow-art" class="button" href="${ARROW_SPRITE_URL}" target="_blank" rel="noopener" hidden>Open arrow sheet ↗</a><p class="legend"><span class="left-dot"></span> Anatomical left <span class="right-dot"></span> Anatomical right</p>
       </section>
       <section class="panel" aria-labelledby="directions-title"><div class="section-head"><div><p class="eyebrow">02 / ANIMATED VIEW</p><h2 id="directions-title">Every direction, in sync</h2></div><span class="badge">8 directions</span></div><div class="directions">${directions.map((name, i) => `<button class="direction-card" data-row="${i}" aria-label="Inspect ${name}"><div class="stage checker"><canvas width="256" height="256"></canvas></div><span>${name}<small>Row ${i + 1}</small></span></button>`).join('')}</div><p id="sequence" class="mono"></p><p class="hint">Select a direction to inspect it. Pause or step to compare the same pose across all views.</p></section>
     </div>
@@ -160,7 +162,11 @@ function render() {
     card.setAttribute('aria-pressed', String(i === row));
     paint(card.querySelector('canvas')!, i, column, 256);
   });
-  el('item-art').hidden = currentItem() !== 'axe';
+  const itemArt = el<HTMLAnchorElement>('item-art');
+  itemArt.hidden = !['axe', 'bow'].includes(currentItem());
+  el('arrow-art').hidden = currentItem() !== 'bow';
+  itemArt.href = currentItem() === 'bow' ? BOW_SPRITE_URL : AXE_SPRITE_URL;
+  itemArt.textContent = `Open 8-direction ${currentItem()} sheet ↗`;
   el('focus-title').textContent = directions[row];
   el('frame-label').textContent = `Frame ${column + 1} / ${columns}`;
   el<HTMLInputElement>('frame').value = String(column);
