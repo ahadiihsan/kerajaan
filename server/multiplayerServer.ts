@@ -52,7 +52,7 @@ export class MultiplayerServer {
   private readonly coop = new CoopWorldStore();
 
   constructor(serverOptions?: { noServer?: boolean; port?: number }) {
-    this.wss = new WebSocketServer(serverOptions || { noServer: true });
+    this.wss = new WebSocketServer({ ...(serverOptions || { noServer: true }), maxPayload: 8192 });
     this.setupListeners();
     this.startBroadcastLoop();
   }
@@ -135,8 +135,8 @@ export class MultiplayerServer {
 
     switch (msg.type) {
       case 'update': {
-        if (Number.isFinite(msg.x)) player.x = msg.x;
-        if (Number.isFinite(msg.z)) player.z = msg.z;
+        if (Number.isFinite(msg.x)) player.x = Math.max(-24, Math.min(52, msg.x));
+        if (Number.isFinite(msg.z)) player.z = Math.max(-24, Math.min(52, msg.z));
         player.face = msg.face === -1 ? -1 : 1;
         player.frame = Number.isFinite(msg.frame) ? Math.max(0, Math.min(10, Math.floor(msg.frame))) : 0;
         player.crouch = Number.isFinite(msg.crouch) ? Math.max(0, Math.min(1, msg.crouch)) : 0;
@@ -146,7 +146,10 @@ export class MultiplayerServer {
       }
 
       case 'chat': {
-        const text = String(msg.text || '').trim().substring(0, 120);
+        const text = String(msg.text || '')
+          .replace(/[\x00-\x1f\x7f]/g, '')
+          .trim()
+          .substring(0, 120);
         if (text.length > 0) {
           console.log(`[Chat] <${player.name}>: ${text}`);
           this.broadcast({
@@ -160,7 +163,10 @@ export class MultiplayerServer {
       }
 
       case 'set_name': {
-        const sanitized = String(msg.name || '').trim().substring(0, 20);
+        const sanitized = String(msg.name || '')
+          .replace(/[\x00-\x1f\x7f]/g, '')
+          .trim()
+          .substring(0, 20);
         if (sanitized.length > 0) {
           player.name = sanitized;
           this.broadcast({

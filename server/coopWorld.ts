@@ -40,7 +40,17 @@ export class CoopWorldStore {
     tileI: number,
     tileJ: number
   ): { ok: boolean; hits: number; drop?: WoodDropState } {
-    if (!Number.isInteger(treeIndex) || treeIndex < 0) {
+    if (
+      !Number.isInteger(treeIndex) ||
+      treeIndex < 0 ||
+      treeIndex >= 5000 ||
+      !Number.isInteger(tileI) ||
+      !Number.isInteger(tileJ) ||
+      tileI < 0 ||
+      tileI >= 72 ||
+      tileJ < 0 ||
+      tileJ >= 72
+    ) {
       return { ok: false, hits: 0 };
     }
     const prev = this.treeHits.get(treeIndex) ?? 0;
@@ -71,7 +81,7 @@ export class CoopWorldStore {
   }
 
   public placeBlueprint(i: number, j: number): { ok: true; site: BuildingSiteState } | { ok: false; reason: string } {
-    if (!Number.isInteger(i) || !Number.isInteger(j)) {
+    if (!Number.isInteger(i) || !Number.isInteger(j) || i < 1 || i > 70 || j < 1 || j > 69) {
       return { ok: false, reason: 'Invalid blueprint coordinates.' };
     }
     if (this.buildingSite) {

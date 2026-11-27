@@ -57,7 +57,13 @@ export class MultiplayerManager {
     const params = new URLSearchParams(window.location.search);
     const customServer = params.get('server');
     if (customServer) {
-      wsUrl = customServer;
+      try {
+        const parsed = new URL(customServer, window.location.href);
+        if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') return;
+        wsUrl = parsed.toString();
+      } catch {
+        return;
+      }
     } else if (import.meta.env.DEV) {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       wsUrl = `${protocol}//${window.location.host}/ws`;

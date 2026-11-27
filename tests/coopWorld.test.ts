@@ -56,4 +56,12 @@ describe('CoopWorldStore', () => {
     // Another blueprint can now be placed after completion
     assert.equal(store.placeBlueprint(35, 40).ok, true);
   });
+
+  it('rejects out-of-bounds tree and blueprint coordinates', () => {
+    const store = new CoopWorldStore();
+    assert.equal(store.hitTree(-1, 10, 10).ok, false);
+    assert.equal(store.hitTree(0, 72, 10).ok, false);
+    assert.equal(store.placeBlueprint(0, 10).ok, false);
+    assert.equal(store.placeBlueprint(10, 70).ok, false);
+  });
 });

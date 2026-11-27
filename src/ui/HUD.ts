@@ -342,9 +342,17 @@ export class HUD {
     const sk = JSON.stringify(v.stats);
     if (sk !== this.statKey) {
       this.statKey = sk;
-      $('iStats').innerHTML = Object.entries(v.stats)
-        .map(([k, n]) => `<div><span>${k}</span><b>${n}</b></div>`)
-        .join('');
+      $('iStats').replaceChildren(
+        ...Object.entries(v.stats).map(([k, n]) => {
+          const cell = document.createElement('div');
+          const label = document.createElement('span');
+          label.textContent = k;
+          const val = document.createElement('b');
+          val.textContent = String(n);
+          cell.append(label, val);
+          return cell;
+        })
+      );
     }
     $('iMood').textContent = v.mood;
     $('iAct').textContent = v.activity;
@@ -352,9 +360,18 @@ export class HUD {
     const ik = v.inv.map((i) => i.name + i.qty).join('|');
     if (ik !== this.invKey) {
       this.invKey = ik;
-      $('iInv').innerHTML = v.inv
-        .map((i) => `<li title="${i.name}"><span>${i.icon}</span>${i.name}<em>${i.qty > 1 ? '×' + i.qty : ''}</em></li>`)
-        .join('');
+      $('iInv').replaceChildren(
+        ...v.inv.map((i) => {
+          const li = document.createElement('li');
+          li.title = i.name;
+          const icon = document.createElement('span');
+          icon.textContent = i.icon;
+          const qty = document.createElement('em');
+          qty.textContent = i.qty > 1 ? `×${i.qty}` : '';
+          li.append(icon, i.name, qty);
+          return li;
+        })
+      );
     }
     this.pctx.clearRect(0, 0, 16, 24);
     this.pctx.drawImage(v.sheet, v.frame * 16, 0, 16, 24, 0, 0, 16, 24);
