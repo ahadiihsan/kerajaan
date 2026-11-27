@@ -88,27 +88,62 @@
 </div>
 
 <div id="banner"><b></b><span></span></div>
-<div id="playerControls" class="panel" role="group" aria-label="Player controls">
+<div id="playerControls" role="group" aria-label="Player controls">
   <span id="moveHint"><b>WASD</b>, <b>arrow keys</b>, or click a tile</span>
-  <div id="movePad">
-    <button class="btn" data-move="up" aria-label="Walk up">↑</button>
-    <button class="btn" data-move="left" aria-label="Walk left">←</button>
-    <button class="btn" data-move="down" aria-label="Walk down">↓</button>
-    <button class="btn" data-move="right" aria-label="Walk right">→</button>
+  <div id="movePad" role="group" aria-label="Movement thumbstick">
+    <span id="moveThumb" aria-hidden="true"></span>
   </div>
   <div id="chopProgress" class="panel hide" role="status"></div>
   <div id="buildStatus" class="panel hide">
     <output id="buildProgress" aria-label="House progress"></output>
     <button id="depositWood" class="btn">Deposit wood</button>
   </div>
-  <div id="toolBar" role="group" aria-label="Tools">
-    <button id="axeTool" class="btn" aria-pressed="false" title="Equip axe to chop trees">🪓 Axe</button>
-    <button id="bowTool" class="btn" aria-pressed="false" title="Equip bow to hunt deer">🏹 Bow</button>
-    <button id="blueprintTool" class="btn" aria-pressed="false" title="Place a house blueprint">Blueprint</button>
-    <output id="woodCount" aria-label="Wood collected">Wood 0</output>
-    <output id="meatCount" aria-label="Venison collected">Meat 0</output>
+  <div id="playerActions">
+    <button id="throwItem" class="btn hide">Throw</button>
+    <label id="fishingMode" class="btn" hidden><input id="autoFish" type="checkbox"> Auto fish</label>
+    <button id="closeFishing" class="btn" hidden>Exit fishing</button>
     <button id="playerCamera" class="btn" aria-label="Center on hero">Center</button>
   </div>
+  <div id="toolBar" class="woodFrame" role="group" aria-label="Hotbar">
+    <button id="openBag" class="itemSlot" aria-label="Open bag" aria-haspopup="dialog" title="Bag (B)">
+      <kbd aria-hidden="true">B</kbd><span class="bagIcon" aria-hidden="true">🎒</span>
+    </button>
+  </div>
+</div>
+<dialog id="bag" class="woodFrame" aria-labelledby="bagTitle">
+  <header>
+    <h2 id="bagTitle">Traveler’s Bag</h2>
+    <form method="dialog"><button class="btn" autofocus>Close</button></form>
+  </header>
+  <div id="bagCategories" role="group" aria-label="Bag category">
+    <button id="showEquipment" class="btn" aria-pressed="true">Equipment</button>
+    <button id="showItems" class="btn" aria-pressed="false">Items</button>
+  </div>
+  <div id="bagEquipment" class="bagList"></div>
+  <div id="bagItems" class="bagList" hidden></div>
+</dialog>
+<dialog id="itemQuantity" class="woodFrame" aria-labelledby="quantityLabel">
+  <form id="quantityForm">
+    <label id="quantityLabel" for="quantityAmount"></label>
+    <input id="quantityAmount" type="number" min="1" step="1" required autofocus>
+    <div>
+      <button class="btn" type="submit" id="quantityConfirm"></button>
+      <button class="btn" type="submit" formmethod="dialog" formnovalidate>Cancel</button>
+    </div>
+  </form>
+</dialog>
+<section id="fishing" aria-label="Fishing" hidden>
+  <div id="fishingGauge" class="woodFrame">
+    <button id="fishingTap" type="button" aria-label="Lift the catch bar">
+      <span id="fishingBar"></span>
+      <span id="fishingFish" aria-hidden="true"></span>
+    </button>
+    <progress id="fishingProgress" max="1" aria-label="Catch progress"></progress>
+  </div>
+</section>
+<div id="caughtFish" role="status" hidden>
+  <img id="caughtFishImage" alt="">
+  <div><strong id="caughtFishName"></strong><span id="caughtFishDetails"></span></div>
 </div>
 <div id="toast" class="panel" role="status"></div>
 

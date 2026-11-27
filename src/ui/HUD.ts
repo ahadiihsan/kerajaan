@@ -1,7 +1,9 @@
+import { BITE_ANIMATION, CAST_FLIGHT, FishingVisuals } from './FishingVisuals';
+import { CATCH_BAR_HEIGHT, FISH, FishingRound } from '../core/Fishing';
 import * as THREE from 'three';
 import { clamp, lerp, pick, R, V3 } from '../utils/math';
 import { fmtTime, phaseName, PRESETS, weatherName, world } from '../core/WorldState';
-import { N, ORIGIN, PCW, ti, tj, WorldGrid } from '../world/WorldGrid';
+import { idx, inGrid, N, ORIGIN, PCW, T, ti, tj, WATER_Y, WorldGrid } from '../world/WorldGrid';
 import type { ProceduralTextures } from '../world/Textures';
 import type { WorldBuildings } from '../world/Buildings';
 import type { WorldVegetation } from '../world/Vegetation';
@@ -10,11 +12,21 @@ import type { Pool } from '../core/Particles';
 import type { AudioEngine } from '../core/AudioEngine';
 import type { Engine } from '../core/Engine';
 import type { Dragon } from '../entities/Dragon';
-import { HOUSE_WOOD_COST, MOVE_KEYS, STRIKES_TO_FELL, type HeroController } from '../entities/HeroController';
+import { HOUSE_WOOD_COST, MOVE_KEYS, STRIKES_TO_FELL, type HeroController, type MoveDirection } from '../entities/HeroController';
 import type { Villager } from '../entities/Villager';
+import { itemIcon, type ItemIcon } from './ItemIcons';
 import type { MultiplayerManager } from '../multiplayer/MultiplayerManager';
 
+type BagEntry = {
+  id: ItemIcon;
+  name: string;
+  count?: () => number;
+  active: () => boolean;
+  equip: (active: boolean) => void;
+};
+
 const $ = (id: string) => document.getElementById(id)!;
+const STICK_DIRECTIONS: MoveDirection[] = ['right', 'downRight', 'down', 'downLeft', 'left', 'upLeft', 'up', 'upRight'];
 
 export class HUD {
   public followHero = true;
@@ -33,6 +45,9 @@ export class HUD {
   private dragMode: 'orbit' | 'pan' | null = null;
   private downPos: { x: number; y: number } | null = null;
   private pinch0 = 0;
+  private stickPointer: number | null = null;
+  private readonly movePad = $('movePad');
+  private readonly moveThumb = $('moveThumb');
   private readonly pointers = new Map<number, { x: number; y: number }>();
   private readonly ray = new THREE.Raycaster();
   private readonly ndc = new THREE.Vector2();
@@ -40,6 +55,36 @@ export class HUD {
   private readonly npcNameRange = 5;
 
   private readonly pctx: CanvasRenderingContext2D;
+  private readonly bag = $('bag') as HTMLDialogElement;
+  private readonly fishingPanel = $('fishing');
+  private readonly fishingTap = $('fishingTap') as HTMLButtonElement;
+  private readonly fishingBar = $('fishingBar');
+  private readonly fishingFish = $('fishingFish');
+  private readonly fishingProgress = $('fishingProgress') as HTMLProgressElement;
+  private fishingRound: FishingRound | null = null;
+  private cast: { target: THREE.Vector3; elapsed: number; biteAt: number } | null = null;
+  private recastIn = 0;
+  private catchTime = 0;
+  private readonly autoFish = $('autoFish') as HTMLInputElement;
+  private catchColor = '#ffffff';
+  private readonly fishingVisuals: FishingVisuals;
+  private readonly quantityDialog = $('itemQuantity') as HTMLDialogElement;
+  private quantityAction: 'throw' | 'deposit' = 'throw';
+  private readonly bagEntries: BagEntry[] = [
+    { id: 'axe', name: 'Axe', active: () => this.hero.axeEquipped, equip: (active) => this.hero.setAxeMode(active) },
+    { id: 'bow', name: 'Bow', active: () => this.hero.bowEquipped, equip: (active) => this.hero.setBowMode(active) },
+    { id: 'blueprint', name: 'Blueprint', active: () => this.hero.placingBlueprint, equip: (active) => {
+      if (active && this.hero.buildingSite) this.toast('Finish the current house before placing another blueprint.');
+      else this.hero.setBlueprintMode(active);
+    } },
+    { id: 'rod', name: 'Fishing Rod', active: () => this.hero.rodEquipped, equip: (active) => this.hero.setRodMode(active) },
+    { id: 'wood', name: 'Wood', count: () => this.hero.wood, active: () => this.hero.carrying === 'wood', equip: (active) => this.hero.setCarryItem(active ? 'wood' : null) },
+    { id: 'meat', name: 'Venison', count: () => this.hero.meat, active: () => this.hero.carrying === 'meat', equip: (active) => this.hero.setCarryItem(active ? 'meat' : null) },
+  ];
+  private readonly hotbar = this.bagEntries.filter(({ id }) => id !== 'rod') as (BagEntry | null)[];
+  private readonly slotButtons: HTMLButtonElement[] = [];
+  private readonly slotSelectors = new Map<BagEntry, HTMLSelectElement>();
+  private readonly bagCounts = new Map<BagEntry, HTMLElement>();
   private readonly chatPanel = $('chatPanel');
   private readonly chatInput = $('chatInput') as HTMLInputElement;
   private readonly chatLog = $('chatLog');
@@ -76,6 +121,7 @@ export class HUD {
     multiplayer: MultiplayerManager;
   }) {
     this.engine = opts.engine;
+    this.fishingVisuals = new FishingVisuals(opts.engine.scene);
     this.grid = opts.grid;
     this.buildings = opts.buildings;
     this.vegetation = opts.vegetation;
@@ -120,24 +166,10 @@ export class HUD {
     this.speechBubble.className = 'hide';
     this.heroNameLabel.append(this.speechBubble);
 
+    this.bindInventory();
+    this.bindFishing();
     this.hero.onBuildStatusChange = () => this.refreshBuildStatus();
     this.hero.onChopProgressChange = (hits) => this.showChopProgress(hits);
-    this.hero.onAxeModeChange = (active) => {
-      const btn = $('axeTool');
-      btn.classList.toggle('on', active);
-      btn.setAttribute('aria-pressed', String(active));
-    };
-    this.hero.onBowModeChange = (active) => {
-      const btn = $('bowTool');
-      btn.classList.toggle('on', active);
-      btn.setAttribute('aria-pressed', String(active));
-    };
-    this.hero.onBlueprintModeChange = (active) => {
-      const btn = $('blueprintTool');
-      btn.classList.toggle('on', active);
-      btn.setAttribute('aria-pressed', String(active));
-    };
-
     this.bindUI();
     this.bindPointerEvents();
     this.bindKeyboardEvents();
@@ -382,14 +414,278 @@ export class HUD {
     this.pctx.drawImage(v.sheet, v.frame * 16, 0, 16, 24, 0, 0, 16, 24);
   }
 
+  private bindFishing(): void {
+    $('closeFishing').addEventListener('click', () => this.closeFishing());
+    this.autoFish.addEventListener('change', () => {
+      if (!this.fishingRound) return;
+      this.fishingRound.auto = this.autoFish.checked;
+      this.fishingTap.disabled = this.fishingRound.auto;
+    });
+    this.fishingTap.addEventListener('click', () => this.fishingRound?.tap());
+    this.fishingBar.style.height = `${CATCH_BAR_HEIGHT * 100}%`;
+  }
+
+  private castLine(target: THREE.Vector3): void {
+    if (!this.hero.canFish()) {
+      this.toast('Stand still at the water’s edge to cast.');
+      return;
+    }
+    if (Math.hypot(target.x - this.hero.x, target.z - this.hero.z) > 5) {
+      this.toast('Aim at water closer to the shore.');
+      return;
+    }
+    this.clearPlayerMovement();
+    this.hero.path = [];
+    this.hero.cancelInteraction();
+    this.select(null);
+    this.focusHero();
+    this.catchTime = 0;
+    const direction = (target.x - this.hero.x) * this.engine.camRight.x +
+      (target.z - this.hero.z) * this.engine.camRight.z;
+    if (Math.abs(direction) > 0.2) this.hero.face = direction > 0 ? 1 : -1;
+    $('caughtFish').hidden = true;
+    this.throwBait(new V3(target.x, WATER_Y, target.z));
+    this.setFishingControls(true);
+    $('closeFishing').focus({ preventScroll: true });
+  }
+
+  private throwBait(target: THREE.Vector3): void {
+    this.cast = {
+      target,
+      elapsed: 0,
+      biteAt: CAST_FLIGHT + 0.9 + Math.random() * 1.7,
+    };
+  }
+
+  private setFishingControls(active: boolean): void {
+    this.movePad.inert = $('toolBar').inert = active;
+    $('closeFishing').hidden = !active;
+    $('playerCamera').hidden = active;
+  }
+
+  private closeFishing(): void {
+    this.cast = this.fishingRound = null;
+    this.recastIn = this.catchTime = 0;
+    this.fishingPanel.hidden = $('caughtFish').hidden = true;
+    this.setFishingControls(false);
+    this.autoFish.focus({ preventScroll: true });
+  }
+
+  private showCatch(index: number): void {
+    const fish = FISH[index];
+    const [min, max] = fish.weight;
+    const weight = lerp(min, max, Math.random());
+    this.hero.fishCatches[index]++;
+    this.catchTime = 0.001;
+    this.catchColor = fish.color;
+    const image = $('caughtFishImage') as HTMLImageElement;
+    image.src = itemIcon('fish').toDataURL();
+    $('caughtFishName').textContent = fish.name;
+    $('caughtFishDetails').textContent = `${fish.rarity} · ${weight.toFixed(2)} kg`;
+    $('caughtFish').hidden = false;
+  }
+
+  private updateFishing(dt: number): void {
+    $('fishingMode').hidden = !this.hero.rodEquipped;
+    if (this.catchTime > 0) {
+      this.catchTime += dt;
+      if (this.catchTime >= 3.4 || this.hero.step || !this.hero.rodEquipped) {
+        this.catchTime = 0;
+        $('caughtFish').hidden = true;
+      }
+    }
+
+    const cast = this.cast;
+    if (cast && this.recastIn > 0) {
+      this.recastIn = Math.max(0, this.recastIn - dt);
+      if (this.recastIn === 0) this.throwBait(cast.target);
+    } else if (cast) {
+      const previous = cast.elapsed;
+      cast.elapsed += dt;
+      if (previous < cast.biteAt && cast.elapsed >= cast.biteAt) this.audio.blip();
+      if (!this.fishingRound && cast.elapsed >= cast.biteAt + BITE_ANIMATION) {
+        this.fishingRound = new FishingRound(this.autoFish.checked);
+        this.fishingFish.style.backgroundColor = FISH[this.fishingRound.fish].color;
+        this.fishingTap.disabled = this.fishingRound.auto;
+        this.fishingPanel.hidden = false;
+        if (!this.fishingRound.auto && document.activeElement === $('closeFishing')) {
+          this.fishingTap.focus({ preventScroll: true });
+        }
+      }
+    }
+    const round = this.fishingRound;
+    if (round) {
+      round.update(dt);
+      this.fishingBar.style.bottom = `${(round.bar - CATCH_BAR_HEIGHT / 2) * 100}%`;
+      this.fishingFish.style.bottom = `${round.position * 100}%`;
+      this.fishingProgress.value = round.progress;
+      if (round.result) {
+        if (document.activeElement === this.fishingTap) $('closeFishing').focus({ preventScroll: true });
+        this.fishingRound = null;
+        this.fishingPanel.hidden = true;
+        this.recastIn = round.result === 'caught' ? 3.4 : 0.8;
+        if (round.result === 'caught') this.showCatch(round.fish);
+        else this.toast('The fish escaped.');
+      }
+    }
+    const visibleCast = this.recastIn > 0 ? null : this.cast;
+    this.hero.fishingPose = visibleCast ? 'cast' : this.catchTime > 0.18 ? 'hold' : null;
+    this.fishingVisuals.update(
+      this.hero.mesh.position, this.engine.camRight, this.hero.face, this.hero.rodEquipped,
+      visibleCast, this.catchTime, this.catchColor,
+    );
+  }
+
+  private bindInventory(): void {
+    const bagButton = $('openBag');
+    bagButton.querySelector('.bagIcon')!.replaceWith(itemIcon('bag'));
+    bagButton.addEventListener('click', () => {
+      if (this.bag.open) return;
+      this.clearPlayerMovement();
+      this.bag.showModal();
+      this.refreshInventory();
+    });
+    for (const category of ['Equipment', 'Items']) {
+      $(`show${category}`).addEventListener('click', () => {
+        for (const option of ['Equipment', 'Items']) {
+          $(`bag${option}`).hidden = option !== category;
+          $(`show${option}`).setAttribute('aria-pressed', String(option === category));
+        }
+      });
+    }
+    this.hotbar.forEach((_, index) => {
+      const slot = document.createElement('div');
+      slot.className = 'itemSlot';
+      const key = document.createElement('kbd');
+      key.textContent = String(index + 1);
+      key.setAttribute('aria-hidden', 'true');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'slotAction';
+      button.setAttribute('aria-keyshortcuts', String(index + 1));
+      button.addEventListener('click', () => {
+        const entry = this.hotbar[index];
+        entry?.equip(!entry.active());
+        this.refreshInventory();
+      });
+      slot.append(key, button);
+      this.slotButtons.push(button);
+      bagButton.before(slot);
+    });
+
+    for (const entry of this.bagEntries) {
+      const { row, count } = this.bagRow(entry.id, entry.name);
+      this.bagCounts.set(entry, count);
+      const selector = document.createElement('select');
+      selector.setAttribute('aria-label', `Hotbar slot for ${entry.name}`);
+      selector.add(new Option('In bag', '-1'));
+      this.hotbar.forEach((_, index) => selector.add(new Option(`Slot ${index + 1}`, String(index))));
+      selector.addEventListener('change', () => {
+        const old = this.hotbar.indexOf(entry);
+        const next = Number(selector.value);
+        if (old === next) return;
+        if (old >= 0) this.hotbar[old] = null;
+        if (next >= 0) {
+          const displaced = this.hotbar[next];
+          if (displaced?.active()) displaced.equip(false);
+          this.hotbar[next] = entry;
+        } else if (entry.active()) {
+          entry.equip(false);
+        }
+        this.refreshInventory();
+      });
+      row.append(selector);
+      this.slotSelectors.set(entry, selector);
+      $(entry.count ? 'bagItems' : 'bagEquipment').append(row);
+    }
+    FISH.forEach(({ name, rarity }, index) => {
+      const { row, count } = this.bagRow('fish', name);
+      row.title = rarity;
+      row.id = `bagFish${index}`;
+      count.className = 'bagFishCount';
+      $('bagItems').append(row);
+    });
+    this.refreshInventory();
+  }
+
+  private bagRow(icon: ItemIcon, name: string): { row: HTMLElement; count: HTMLElement } {
+    const row = document.createElement('div');
+    row.className = 'bagRow';
+    const label = document.createElement('span');
+    label.textContent = name;
+    const count = document.createElement('span');
+    row.append(itemIcon(icon), label, count);
+    return { row, count };
+  }
+
+  private refreshInventory(): void {
+    this.slotButtons.forEach((button, index) => {
+      const entry = this.hotbar[index];
+      const count = entry?.count?.();
+      if (button.dataset.item !== (entry?.id ?? '')) {
+        button.replaceChildren();
+        if (entry) {
+          button.append(itemIcon(entry.id));
+          if (entry.count) {
+            const badge = document.createElement('span');
+            badge.className = 'itemCount';
+            button.append(badge);
+          }
+        }
+        button.dataset.item = entry?.id ?? '';
+      }
+      const badge = button.querySelector('.itemCount');
+      if (badge) badge.textContent = String(count);
+      button.parentElement!.classList.toggle('emptySlot', !entry);
+      button.disabled = !entry || count === 0;
+      button.setAttribute('aria-pressed', String(entry?.active() ?? false));
+      const label = entry ? entry.name + (count === undefined ? '' : `, ${count}`) : 'Empty slot';
+      button.setAttribute('aria-label', label);
+      button.title = label;
+    });
+    if (!this.bag.open) return;
+    for (const [entry, selector] of this.slotSelectors) {
+      selector.value = String(this.hotbar.indexOf(entry));
+      this.bagCounts.get(entry)!.textContent = entry.count ? `×${entry.count()}` : '';
+    }
+    this.hero.fishCatches.forEach((count, index) => {
+      const row = $(`bagFish${index}`);
+      row.hidden = count === 0;
+      row.querySelector('.bagFishCount')!.textContent = `×${count}`;
+    });
+  }
+
   public refreshBuildStatus(): void {
-    $('woodCount').textContent = `Wood ${this.hero.wood}`;
-    $('meatCount').textContent = `Meat ${this.hero.meat}`;
+    this.refreshInventory();
+    const throwButton = $('throwItem') as HTMLButtonElement;
+    throwButton.classList.toggle('hide', !this.hero.carrying);
+    throwButton.disabled = !this.hero.throwLimit;
     $('buildStatus').classList.toggle('hide', !this.hero.buildingSite);
     if (!this.hero.buildingSite) return;
     const { stored } = this.hero.buildingSite;
     $('buildProgress').textContent = `House · ${stored}/${HOUSE_WOOD_COST} wood · ${Math.round((stored / HOUSE_WOOD_COST) * 100)}%`;
-    ($('depositWood') as HTMLButtonElement).disabled = this.hero.wood === 0;
+    ($('depositWood') as HTMLButtonElement).disabled = !this.hero.deliveryLimit;
+  }
+
+  private askQuantity(action: 'throw' | 'deposit'): void {
+    const limit = action === 'throw' ? this.hero.throwLimit : this.hero.deliveryLimit;
+    if (!limit) {
+      if (action === 'deposit' && this.hero.carrying !== 'wood') this.toast('Select Wood in the hotbar first.');
+      return;
+    }
+    const item = this.hero.carrying === 'meat' ? 'venison' : 'wood';
+    const verb = action === 'throw' ? 'Throw' : 'Deposit';
+    const input = $('quantityAmount') as HTMLInputElement;
+    this.quantityAction = action;
+    $('quantityLabel').textContent = `${verb} ${item} (1–${limit})`;
+    $('quantityConfirm').textContent = verb;
+    input.max = String(limit);
+    input.value = '1';
+    this.clearPlayerMovement();
+    this.hero.cancelInteraction();
+    this.hero.path = [];
+    this.quantityDialog.showModal();
+    input.select();
   }
 
   private showChopProgress(hits: number | null): void {
@@ -453,35 +749,32 @@ export class HUD {
       this.syncFollow();
     });
 
-    $('axeTool').addEventListener('click', () => {
-      this.hero.setAxeMode(!this.hero.axeEquipped);
+    $('depositWood').addEventListener('click', () => this.askQuantity('deposit'));
+    $('throwItem').addEventListener('click', () => this.askQuantity('throw'));
+    $('quantityForm').addEventListener('submit', (event) => {
+      if ((event as SubmitEvent).submitter?.getAttribute('formmethod') === 'dialog') return;
+      event.preventDefault();
+      const amount = ($('quantityAmount') as HTMLInputElement).valueAsNumber;
+      const throwing = this.quantityAction === 'throw';
+      const limit = throwing ? this.hero.throwLimit : this.hero.deliveryLimit;
+      this.quantityDialog.close();
+      if (!Number.isInteger(amount) || amount < 1 || amount > limit) {
+        this.toast('The available quantity changed. Choose a new amount.');
+      } else if (throwing) {
+        this.hero.throwCarriedItem(amount, this.engine.camRight);
+      } else {
+        this.hero.beginDelivery(amount);
+      }
     });
-
-    $('bowTool').addEventListener('click', () => {
-      this.hero.setBowMode(!this.hero.bowEquipped);
-    });
-
-    $('blueprintTool').addEventListener('click', () => {
-      if (this.hero.buildingSite) this.toast('Finish the current house before placing another blueprint.');
-      else this.hero.setBlueprintMode(!this.hero.placingBlueprint);
-    });
-    $('depositWood').addEventListener('click', () => this.hero.beginDelivery());
     $('playerCamera').addEventListener('click', () => {
       this.focusHero();
       this.engine.goal.dist = 23;
     });
 
-    document.querySelectorAll<HTMLElement>('[data-move]').forEach((button) => {
-      button.addEventListener('click', () => {
-        this.focusHero();
-        this.hero.cancelInteraction();
-        this.hero.path = [];
-        this.hero.queuedMove = button.dataset.move as typeof this.hero.queuedMove;
-      });
-    });
+    this.bindMoveStick();
 
     $('chatToggle').addEventListener('click', () => this.setChatOpen(this.chatPanel.classList.contains('hide')));
-    this.chatInput.addEventListener('focus', () => this.hero.clearMovement());
+    this.chatInput.addEventListener('focus', () => this.clearPlayerMovement());
     $('chatForm').addEventListener('submit', (e) => {
       e.preventDefault();
       const message = this.chatInput.value.trim();
@@ -510,11 +803,72 @@ export class HUD {
     });
   }
 
+  private bindMoveStick(): void {
+    const update = (event: PointerEvent) => {
+      if (event.pointerId !== this.stickPointer) return;
+      const bounds = this.movePad.getBoundingClientRect();
+      const x = event.clientX - (bounds.left + bounds.width / 2);
+      const y = event.clientY - (bounds.top + bounds.height / 2);
+      const radius = Math.hypot(x, y);
+      const travel = (bounds.width - this.moveThumb.offsetWidth) / 2;
+      const scale = radius > travel ? travel / radius : 1;
+      this.moveThumb.style.transform = `translate(${x * scale}px, ${y * scale}px)`;
+
+      if (radius < travel * 0.25) {
+        this.hero.heldMoves.delete('moveStick');
+        return;
+      }
+      const sector = Math.round(Math.atan2(y, x) / (Math.PI / 4));
+      const direction = STICK_DIRECTIONS[(sector + STICK_DIRECTIONS.length) % STICK_DIRECTIONS.length];
+      if (!this.hero.heldMoves.has('moveStick')) {
+        this.hero.cancelInteraction();
+        this.hero.path = [];
+        this.focusHero();
+      }
+      this.hero.heldMoves.set('moveStick', direction);
+    };
+
+    this.movePad.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || this.stickPointer !== null) return;
+      event.preventDefault();
+      this.audio.resume();
+      this.movePad.setPointerCapture(event.pointerId);
+      this.stickPointer = event.pointerId;
+      update(event);
+    });
+    this.movePad.addEventListener('pointermove', update);
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+      this.movePad.addEventListener(type, (event) => {
+        if ((event as PointerEvent).pointerId === this.stickPointer) this.resetMoveStick();
+      });
+    }
+    this.movePad.addEventListener('contextmenu', (event) => event.preventDefault());
+    window.addEventListener('resize', () => this.resetMoveStick());
+  }
+
+  private resetMoveStick(): void {
+    const pointer = this.stickPointer;
+    if (pointer === null) return;
+    this.stickPointer = null;
+    this.hero.heldMoves.delete('moveStick');
+    this.moveThumb.style.transform = '';
+    if (this.movePad.hasPointerCapture(pointer)) this.movePad.releasePointerCapture(pointer);
+  }
+
+  private clearPlayerMovement(): void {
+    this.resetMoveStick();
+    this.hero.clearMovement();
+  }
+
   private bindPointerEvents(): void {
     const canvas = this.engine.canvas;
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     canvas.addEventListener('pointerdown', (e) => {
       this.audio.resume();
+      if (this.cast) {
+        if (e.button === 0) this.fishingRound?.tap();
+        return;
+      }
       canvas.setPointerCapture(e.pointerId);
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (this.pointers.size === 2) {
@@ -575,7 +929,12 @@ export class HUD {
         e.button === 0
       ) {
         const villager = this.pickAt(e.clientX, e.clientY);
-        const tile = this.pickMapTile();
+        const point = this.pickMapPoint();
+        const tile: [number, number] | null = point ? [ti(point.x), tj(point.z)] : null;
+        if (this.hero.rodEquipped && point && tile && this.isFishingWater(...tile)) {
+          this.castLine(point);
+          return;
+        }
         const meat = this.pickMeat();
         if (this.hero.bowEquipped) {
           this.select(null);
@@ -585,11 +944,13 @@ export class HUD {
             if (drop) this.hero.startInteraction('loot', drop, drop.i, drop.j);
           } else if (deerHit) {
             const d = this.wildlife.deer[deerHit.deerIndex];
-            this.hero.shootArrowAt(new V3(d.pos.x, d.pos.y + 0.72, d.pos.z), this.engine.camRight);
+            this.hero.shootArrowAt(() => new V3(d.pos.x, d.pos.y + 0.72, d.pos.z), this.engine.camRight);
           } else {
             const pt = this.pickMapPoint();
-            if (pt) this.hero.shootArrowAt(pt.clone().add(new V3(0, 0.35, 0)), this.engine.camRight);
-            else this.toast('Aim at a deer or anywhere on the map to shoot.', 1500);
+            if (pt) {
+              const target = new V3(pt.x, this.grid.groundY(pt.x, pt.z) - 0.01, pt.z);
+              this.hero.shootArrowAt(() => target, this.engine.camRight);
+            } else this.toast('Aim at a deer or anywhere on the map to shoot.', 1500);
           }
           return;
         }
@@ -600,7 +961,7 @@ export class HUD {
         }
         if (tile && this.hero.isBlueprintTile(...tile)) {
           this.select(null);
-          this.hero.beginDelivery();
+          this.askQuantity('deposit');
           return;
         }
         const tree = this.pickTree();
@@ -643,11 +1004,21 @@ export class HUD {
 
   private bindKeyboardEvents(): void {
     window.addEventListener('keyup', (e) => this.hero.heldMoves.delete(e.code));
-    window.addEventListener('blur', () => this.hero.clearMovement());
+    window.addEventListener('blur', () => this.clearPlayerMovement());
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.hero.clearMovement();
+      if (document.hidden) this.clearPlayerMovement();
     });
     window.addEventListener('keydown', (e) => {
+      if (this.bag.open || this.quantityDialog.open) return;
+      if (this.cast) {
+        const target = e.target as HTMLElement | null;
+        if (e.code === 'Space' && this.fishingRound &&
+            !target?.matches('input, textarea, select, button') && !target?.isContentEditable) {
+          e.preventDefault();
+          if (!e.repeat) this.fishingRound.tap();
+        }
+        return;
+      }
       if (e.key === 'Escape' && !this.chatPanel.classList.contains('hide')) {
         this.setChatOpen(false);
         $('chatToggle').focus();
@@ -661,6 +1032,19 @@ export class HUD {
       const target = e.target as HTMLElement | null;
       if (target?.tagName === 'INPUT' && (target as HTMLInputElement).type !== 'range' && (target as HTMLInputElement).type !== 'checkbox') {
         return;
+      }
+      if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey &&
+          !target?.isContentEditable && !target?.matches('input, textarea, select')) {
+        if (e.code === 'KeyB') {
+          e.preventDefault();
+          $('openBag').click();
+          return;
+        }
+        const slot = this.slotButtons[Number(e.key) - 1];
+        if (slot) {
+          slot.click();
+          return;
+        }
       }
       const direction = MOVE_KEYS.get(e.code);
       if (
@@ -683,8 +1067,10 @@ export class HUD {
       }
       this.audio.resume();
       if (e.key === 'Escape') {
+        this.hero.setRodMode(false);
         this.hero.setBlueprintMode(false);
         this.hero.setBowMode(false);
+        this.hero.setCarryItem(null);
         this.select(null);
       }
     });
@@ -738,14 +1124,19 @@ export class HUD {
     return pt ? [ti(pt.x), tj(pt.z)] : null;
   }
 
+  private isFishingWater(i: number, j: number): boolean {
+    return inGrid(i, j) && this.grid.TYPE[idx(i, j)] === T.RIVER;
+  }
+
   private hoverPick(e: PointerEvent): void {
     const n = performance.now();
     if (n - this.hoverT < 90) return;
     this.hoverT = n;
     const villager = this.pickAt(e.clientX, e.clientY);
-    const tile = this.hero.buildingSite ? this.pickMapTile() : null;
+    const tile = this.hero.buildingSite || this.hero.rodEquipped ? this.pickMapTile() : null;
     this.engine.canvas.style.cursor =
-      this.hero.placingBlueprint || this.hero.bowEquipped
+      this.hero.placingBlueprint || this.hero.bowEquipped ||
+      (this.hero.canFish() && tile && this.isFishingWater(...tile))
         ? 'crosshair'
         : villager ||
             (tile && this.hero.isBlueprintTile(...tile)) ||
@@ -771,6 +1162,28 @@ export class HUD {
   }
 
   public updateNameLabels(now: number): void {
+    if (!this.fishingPanel.hidden) {
+      this.labelPoint.copy(this.hero.mesh.position);
+      this.labelPoint.y += 1;
+      this.labelPoint.project(this.engine.camera);
+      const x = (this.labelPoint.x + 1) * window.innerWidth / 2;
+      const y = (1 - this.labelPoint.y) * window.innerHeight / 2;
+      const { offsetWidth: width, offsetHeight: height } = this.fishingPanel;
+      const left = x - width - 38;
+      this.fishingPanel.style.left = `${clamp(left >= 8 ? left : x + 38, 8, window.innerWidth - width - 8)}px`;
+      this.fishingPanel.style.top = `${clamp(y - height / 2, 8, window.innerHeight - height - 8)}px`;
+    }
+    const caught = $('caughtFish');
+    if (!caught.hidden) {
+      this.labelPoint.copy(this.hero.mesh.position);
+      this.labelPoint.y += 2.6;
+      this.labelPoint.project(this.engine.camera);
+      const x = (this.labelPoint.x + 1) * window.innerWidth / 2;
+      const y = (1 - this.labelPoint.y) * window.innerHeight / 2;
+      const half = caught.offsetWidth / 2;
+      caught.style.left = `${clamp(x, half + 8, window.innerWidth - half - 8)}px`;
+      caught.style.top = `${Math.max(caught.offsetHeight + 10, y)}px`;
+    }
     this.heroNameLabel.firstElementChild!.textContent = this.hero.name;
     this.updateNameLabel(this.heroNameLabel, this.hero.mesh, 2.12, true);
     this.speechBubble.classList.toggle('hide', now >= this.bubbleUntil);
@@ -791,8 +1204,10 @@ export class HUD {
   }
 
   public updateUI(dt: number): void {
+    this.updateFishing(dt);
     if ((this.uiT += dt) < 0.1) return;
     this.uiT = 0;
+    this.refreshInventory();
     const tEl = $('time') as HTMLInputElement;
     const wEl = $('weather') as HTMLInputElement;
     if (document.activeElement !== tEl) tEl.value = world.time.toFixed(2);

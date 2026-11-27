@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { PlayerData } from '../../server/multiplayerServer';
 import { characterSprite } from '../entities/Sprites';
+import { TRAVELER_FRAME_COUNT } from '../entities/TravelerFrames';
 import type { WorldGrid } from '../world/WorldGrid';
 
 export class RemoteTraveler {
@@ -48,7 +49,7 @@ export class RemoteTraveler {
         hatCol: data.look.hatCol,
         pack: true,
       },
-      11
+      TRAVELER_FRAME_COUNT
     );
     this.sheet = sprite.sheet;
     this.tex = sprite.tex;

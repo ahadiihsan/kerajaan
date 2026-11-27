@@ -87,6 +87,7 @@ export class MultiplayerManager {
       };
       this.socket.onclose = () => {
         this.isConnected = false;
+        this.hero?.resolveWoodDeposit();
         this.clearPeers();
         this.callbacks.onStatusChange?.(false, 1);
         if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
@@ -264,7 +265,7 @@ export class MultiplayerManager {
 
       case 'wood_deposited': {
         if (msg.playerId === this.localId) {
-          this.hero.wood = Math.max(0, this.hero.wood - msg.accepted);
+          this.hero.resolveWoodDeposit(msg.accepted);
         }
         this.hero.applyWoodDepositLocal(
           msg.stored,
@@ -287,6 +288,7 @@ export class MultiplayerManager {
       }
 
       case 'action_rejected': {
+        if (msg.action !== 'blueprint_place') this.hero.resolveWoodDeposit();
         if (msg.message) this.callbacks.onToast?.(msg.message, 2500);
         break;
       }

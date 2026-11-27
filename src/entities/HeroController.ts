@@ -1,6 +1,7 @@
+import { FISH } from '../core/Fishing';
 import * as THREE from 'three';
 import { clamp, lerp, R, V3 } from '../utils/math';
-import { idx, N, T, TH, ti, tj, WorldGrid, wx, wz, type TileCoord } from '../world/WorldGrid';
+import { idx, inGrid, N, T, TH, ti, tj, WATER_Y, WorldGrid, wx, wz, type TileCoord } from '../world/WorldGrid';
 import type { SharedMaterials, ProceduralTextures } from '../world/Textures';
 import type { WorldBuildings } from '../world/Buildings';
 import type { WorldVegetation } from '../world/Vegetation';
@@ -9,11 +10,20 @@ import type { AudioEngine } from '../core/AudioEngine';
 import type { Pool } from '../core/Particles';
 import type { Villager } from './Villager';
 import { characterSprite, DEFAULT_TRAVELER_PALETTE, type TravelerPalette } from './Sprites';
+import { BOW_IDLE_FRAME, BOW_RAISE_FRAME, FISH_CAST_FRAME, FISH_HOLD_FRAME, TRAVELER_FRAME_COUNT } from './TravelerFrames';
 
 export const STRIKES_TO_FELL = 3;
 export const HOUSE_WOOD_COST = 6;
+const BOW_DRAW_TIME = 0.24;
+const BOW_RELEASE_END = 0.35;
+const BOW_SHOT_TIME = 0.52;
+const BOW_RANGE = 15;
+const ARROW_SPEED = 20;
+const ARROW_GRAVITY = 14;
+const RIPPLE_TIME = 0.65;
 
-export type MoveDirection = 'up' | 'left' | 'down' | 'right';
+type CardinalDirection = 'up' | 'left' | 'down' | 'right';
+export type MoveDirection = CardinalDirection | 'upRight' | 'downRight' | 'downLeft' | 'upLeft';
 export const MOVE_KEYS = new Map<string, MoveDirection>([
   ['KeyW', 'up'],
   ['ArrowUp', 'up'],
@@ -24,15 +34,26 @@ export const MOVE_KEYS = new Map<string, MoveDirection>([
   ['KeyD', 'right'],
   ['ArrowRight', 'right'],
 ]);
-export const MOVE_DIRECTIONS: Record<MoveDirection, TileCoord> = {
+const CARDINAL_DIRECTIONS: Record<CardinalDirection, TileCoord> = {
   up: [0, -1],
   left: [-1, 0],
   down: [0, 1],
   right: [1, 0],
 };
-export const HERO_NEIGHBORS: TileCoord[] = Object.values(MOVE_DIRECTIONS);
+export const HERO_NEIGHBORS: TileCoord[] = Object.values(CARDINAL_DIRECTIONS);
+export const MOVE_DIRECTIONS: Record<MoveDirection, TileCoord> = {
+  ...CARDINAL_DIRECTIONS,
+  upRight: [1, -1],
+  downRight: [1, 1],
+  downLeft: [-1, 1],
+  upLeft: [-1, -1],
+};
+
+export type CarryItem = 'wood' | 'meat';
 
 export interface WoodDrop {
+  local?: boolean;
+  thrownFrom?: THREE.Vector3;
   id: string;
   mesh: THREE.Group;
   origin: THREE.Vector3;
@@ -51,7 +72,9 @@ interface ArrowProjectile {
   pos: THREE.Vector3;
   vel: THREE.Vector3;
   stuck: boolean;
+  flightLeft: number;
   ttl: number;
+  ripple?: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
 }
 
 export interface BuildingSite {
@@ -64,7 +87,7 @@ export interface BuildingSite {
 export type HeroInteraction =
   | { kind: 'chop'; target: number; elapsed: number }
   | { kind: 'loot'; target: WoodDrop | MeatDrop; elapsed: number }
-  | { kind: 'build'; target: BuildingSite; elapsed: number };
+  | { kind: 'build'; target: BuildingSite; elapsed: number; amount: number };
 
 export interface HeroCoopBridge {
   isConnected: () => boolean;
@@ -95,9 +118,20 @@ export class HeroController {
   public path: TileCoord[] = [];
   public wood = 0;
   public meat = 0;
+  public readonly fishCatches = FISH.map(() => 0);
+  private carriedItem: CarryItem | null = null;
+  private carryMesh: THREE.Group | null = null;
+  private depositPending = false;
+  private nextThrownDrop = 0;
+
+  public get carrying(): CarryItem | null {
+    return this.carriedItem && this[this.carriedItem] > 0 ? this.carriedItem : null;
+  }
 
   public readonly heldMoves = new Map<string, MoveDirection>();
   public queuedMove: MoveDirection | null = null;
+  public rodEquipped = false;
+  public fishingPose: 'cast' | 'hold' | null = null;
   public axeEquipped = false;
   public bowEquipped = false;
   public placingBlueprint = false;
@@ -115,6 +149,7 @@ export class HeroController {
   private readonly fxNorm: Pool;
   private readonly logGeometry: THREE.CylinderGeometry;
   private readonly logMaterials: THREE.Material[];
+  private readonly rippleGeo = new THREE.RingGeometry(0.8, 1, 24);
   private readonly arrowShaftGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.68, 5);
   private readonly arrowTipGeo = new THREE.ConeGeometry(0.052, 0.16, 5);
   private readonly arrowFletchGeo = new THREE.PlaneGeometry(0.14, 0.08);
@@ -124,8 +159,8 @@ export class HeroController {
   private readonly meatMat = new THREE.MeshLambertMaterial({ color: 0xa63a2b, flatShading: true });
   private readonly boneMat = new THREE.MeshLambertMaterial({ color: 0xeadfc8, flatShading: true });
   private readonly arrows: ArrowProjectile[] = [];
-  private arrowCooldown = 0;
-  private shootAnimTimer = 0;
+  private shotTime = BOW_SHOT_TIME;
+  private shotTarget: (() => THREE.Vector3) | null = null;
   private readonly blueprintInk = new THREE.MeshBasicMaterial({ color: 0x56b8fc });
   private readonly blueprintLine = new THREE.BoxGeometry(1, 0.025, 0.055);
   private readonly toast: (msg: string, ms?: number) => void;
@@ -185,7 +220,7 @@ export class HeroController {
         hatCol: pal.hatCol,
         pack: true,
       },
-      11
+      TRAVELER_FRAME_COUNT
     );
     this.sheet = sprite.sheet;
     this.tex = sprite.tex;
@@ -219,14 +254,36 @@ export class HeroController {
     this.path = [];
   }
 
+  public canFish(): boolean {
+    if (!this.rodEquipped || this.step) return false;
+    return HERO_NEIGHBORS.some(([dx, dz]) => {
+      const i = this.i + dx;
+      const j = this.j + dz;
+      return inGrid(i, j) && this.grid.TYPE[idx(i, j)] === T.RIVER;
+    });
+  }
+
   public clearMovement(): void {
     this.heldMoves.clear();
     this.queuedMove = null;
   }
 
+  public setRodMode(active: boolean): void {
+    this.rodEquipped = active;
+    if (!active) return;
+    this.setCarryItem(null);
+    this.setAxeMode(false);
+    this.setBowMode(false);
+    this.setBlueprintMode(false);
+    this.cancelInteraction();
+    this.toast('Fishing rod equipped. Click nearby water from the shore.', 2200);
+  }
+
   public setAxeMode(active: boolean): void {
     this.axeEquipped = active;
     if (active) {
+      this.setRodMode(false);
+      this.setCarryItem(null);
       if (this.bowEquipped) this.setBowMode(false);
       if (this.placingBlueprint) this.setBlueprintMode(false);
       this.toast('Axe equipped. Click or tap a tree.', 2200);
@@ -239,6 +296,8 @@ export class HeroController {
   public setBowMode(active: boolean): void {
     this.bowEquipped = active;
     if (active) {
+      this.setRodMode(false);
+      this.setCarryItem(null);
       if (this.axeEquipped) this.setAxeMode(false);
       if (this.placingBlueprint) this.setBlueprintMode(false);
       if (this.interaction?.kind === 'chop' || this.interaction?.kind === 'build') {
@@ -246,12 +305,15 @@ export class HeroController {
       }
       this.toast('Bow equipped. Click a deer or anywhere to shoot.', 2400);
     }
+    if (!active) this.cancelBowDraw();
     this.onBowModeChange?.(active);
   }
 
   public setBlueprintMode(active: boolean): void {
     this.placingBlueprint = active;
     if (active) {
+      this.setRodMode(false);
+      this.setCarryItem(null);
       if (this.axeEquipped) this.setAxeMode(false);
       if (this.bowEquipped) this.setBowMode(false);
     }
@@ -409,25 +471,86 @@ export class HeroController {
     }
   }
 
-  public beginDelivery(): void {
-    if (!this.buildingSite) return;
-    if (!this.wood) {
-      this.toast('Collect wood before delivering it to the blueprint.');
-      return;
+  public setCarryItem(item: CarryItem | null): void {
+    if (item && this[item] === 0) return;
+    if (this.carriedItem === item) return;
+    if (this.interaction?.kind === 'build') this.cancelInteraction();
+    if (item) {
+      this.setRodMode(false);
+      this.setAxeMode(false);
+      this.setBowMode(false);
+      this.setBlueprintMode(false);
     }
-    this.startInteraction('build', this.buildingSite, this.buildingSite.i, this.buildingSite.j + 2);
+    if (this.carryMesh) this.scene.remove(this.carryMesh);
+    this.carriedItem = item;
+    this.carryMesh = item === 'wood' ? this.makeLogPile(1) : item === 'meat' ? this.makeMeatMesh() : null;
+    if (this.carryMesh) this.scene.add(this.carryMesh);
+    this.onBuildStatusChange?.();
   }
 
-  private finishDelivery(site: BuildingSite): void {
-    const amount = Math.min(this.wood, HOUSE_WOOD_COST - site.stored);
+  public get throwLimit(): number {
+    const item = this.carrying;
+    return item && !(item === 'wood' && this.depositPending) ? this[item] : 0;
+  }
+
+  public throwCarriedItem(amount: number, cameraRight: THREE.Vector3): void {
+    const item = this.carrying;
+    if (!item || !Number.isInteger(amount) || amount < 1 || amount > this.throwLimit) return;
+    this.cancelInteraction();
+    this.clearMovement();
+    this.path = [];
+    const sideways = Math.abs(cameraRight.x) >= Math.abs(cameraRight.z);
+    const dx = sideways ? Math.sign(cameraRight.x) * this.face : 0;
+    const dz = sideways ? 0 : Math.sign(cameraRight.z) * this.face;
+    const [i, j] = this.grid.canStep(this.i, this.j, dx, dz)
+      ? [this.i + dx, this.j + dz]
+      : this.nearestWalkableTile(this.i, this.j);
+    const drop = item === 'wood'
+      ? this.spawnWoodDrop(`thrown_${++this.nextThrownDrop}`, i, j, amount)
+      : this.spawnMeatDrop(wx(i), wz(j), amount);
+    drop.local = true;
+    drop.thrownFrom = new V3(this.x, this.grid.groundY(this.x, this.z) + 0.66, this.z);
+    drop.mesh.position.copy(drop.thrownFrom);
+    this[item] -= amount;
+    if (!this[item]) this.setCarryItem(null);
+    else this.onBuildStatusChange?.();
+  }
+
+  public get deliveryLimit(): number {
+    const site = this.buildingSite;
+    return site && this.carrying === 'wood' && !this.depositPending
+      ? Math.min(this.wood, HOUSE_WOOD_COST - site.stored)
+      : 0;
+  }
+
+  public beginDelivery(amount: number): void {
+    const site = this.buildingSite;
+    if (!site || !Number.isInteger(amount) || amount < 1 || amount > this.deliveryLimit) return;
+    this.startInteraction('build', site, site.i, site.j + 2, amount);
+  }
+
+  public resolveWoodDeposit(accepted = 0): void {
+    if (!this.depositPending) return;
+    this.depositPending = false;
+    this.wood = Math.max(0, this.wood - accepted);
+    if (!this.wood && this.carriedItem === 'wood') this.setCarryItem(null);
+    else this.onBuildStatusChange?.();
+  }
+
+  private finishDelivery(site: BuildingSite, requested: number): void {
+    if (site !== this.buildingSite) return;
+    const amount = Math.min(requested, this.deliveryLimit);
     if (amount <= 0) return;
 
     if (this.coop.isConnected()) {
+      this.depositPending = true;
+      this.onBuildStatusChange?.();
       this.coop.sendWoodDeposit(amount);
       return;
     }
 
     this.wood -= amount;
+    if (!this.wood) this.setCarryItem(null);
     this.applyWoodDepositLocal(site.stored + amount, amount, true);
   }
 
@@ -473,10 +596,13 @@ export class HeroController {
     kind: HeroInteraction['kind'],
     target: number | WoodDrop | MeatDrop | BuildingSite,
     i: number,
-    j: number
+    j: number,
+    amount = 0
   ): void {
-    if (this.interaction?.kind === kind && this.interaction.target === target) return;
-    const path = kind === 'build' ? this.routeToTile(i, j) : this.routeBeside(i, j);
+    if (kind !== 'build' && this.interaction?.kind === kind && this.interaction.target === target) return;
+    const path = kind === 'build' || (kind === 'loot' && i === this.i && j === this.j)
+      ? this.routeToTile(i, j)
+      : this.routeBeside(i, j);
     if (!path) {
       this.toast(
         kind === 'chop'
@@ -490,13 +616,14 @@ export class HeroController {
     this.clearMovement();
     this.cancelInteraction();
     this.path = path;
+    this.cancelBowDraw();
     if (kind === 'chop') {
       this.interaction = { kind: 'chop', target: target as number, elapsed: 0 };
       this.onChopProgressChange?.(this.vegetation.trees[target as number]?.hits ?? 0);
     } else if (kind === 'loot') {
       this.interaction = { kind: 'loot', target: target as WoodDrop | MeatDrop, elapsed: 0 };
     } else {
-      this.interaction = { kind: 'build', target: target as BuildingSite, elapsed: 0 };
+      this.interaction = { kind: 'build', target: target as BuildingSite, elapsed: 0, amount };
     }
     this.focusHero();
   }
@@ -527,7 +654,7 @@ export class HeroController {
   public spawnWoodDrop(id: string, i: number, j: number, quantity = 3): WoodDrop {
     const existing = this.woodDrops.find((d) => d.id === id);
     if (existing) return existing;
-    const mesh = this.makeLogPile(quantity);
+    const mesh = this.makeLogPile(Math.min(quantity, 3));
     const origin = new V3(wx(i), this.grid.groundY(wx(i), wz(j)) + 0.04, wz(j));
     mesh.position.copy(origin);
     const drop: WoodDrop = { id, mesh, origin, i, j, quantity, age: 0 };
@@ -629,53 +756,118 @@ export class HeroController {
     return drop;
   }
 
-  public shootArrowAt(target: THREE.Vector3, camRight: THREE.Vector3): void {
-    if (this.arrowCooldown > 0) return;
-    this.arrowCooldown = 0.45;
-    this.shootAnimTimer = 0.24;
+  public shootArrowAt(target: () => THREE.Vector3, camRight: THREE.Vector3): void {
+    if (!this.bowEquipped || this.shotTime < BOW_SHOT_TIME) return;
+    this.shotTime = 0;
+    this.shotTarget = target;
     this.clearMovement();
     this.cancelInteraction();
     this.path = [];
+    this.faceShot(target(), camRight);
+    this.focusHero();
+  }
 
+  private cancelBowDraw(): void {
+    if (!this.shotTarget) return;
+    this.shotTarget = null;
+    this.shotTime = BOW_SHOT_TIME;
+  }
+
+  private faceShot(target: THREE.Vector3, camRight: THREE.Vector3): void {
     const horizontal = (target.x - this.x) * camRight.x + (target.z - this.z) * camRight.z;
-    if (Math.abs(horizontal) > 0.1) this.face = (Math.sign(horizontal) || 1) as 1 | -1;
+    if (Math.abs(horizontal) > 0.1) this.face = horizontal < 0 ? -1 : 1;
+  }
 
-    const origin = new V3(this.x, this.grid.groundY(this.x, this.z) + 1.05, this.z);
+  private releaseArrow(target: THREE.Vector3): void {
+    const origin = new V3(this.x, this.grid.groundY(this.x, this.z) + 0.8, this.z);
     const dx = target.x - origin.x;
     const dz = target.z - origin.z;
     const dist = Math.hypot(dx, dz);
-    const flightTime = clamp(dist / 20, 0.14, 0.78);
-    const gravity = 14;
+    const reach = Math.min(dist, BOW_RANGE);
+    const scale = dist > BOW_RANGE ? BOW_RANGE / dist : 1;
+    const aimY = dist > BOW_RANGE
+      ? this.grid.groundY(origin.x + dx * scale, origin.z + dz * scale) - 0.01
+      : target.y;
+    const flightTime = Math.max(0.14, reach / ARROW_SPEED);
     const vel = new V3(
-      dx / flightTime,
-      (target.y - origin.y + 0.5 * gravity * flightTime * flightTime) / flightTime,
-      dz / flightTime
+      dx * scale / flightTime,
+      (aimY - origin.y + 0.5 * ARROW_GRAVITY * flightTime * flightTime) / flightTime,
+      dz * scale / flightTime
     );
 
     const mesh = this.makeArrowMesh();
     mesh.position.copy(origin);
     mesh.lookAt(origin.x + vel.x, origin.y + vel.y, origin.z + vel.z);
     this.scene.add(mesh);
-    this.arrows.push({ mesh, pos: origin, vel, stuck: false, ttl: 2.0 });
+    this.arrows.push({
+      mesh, pos: origin, vel, stuck: false,
+      flightLeft: dist > BOW_RANGE ? flightTime : Infinity,
+      ttl: 2,
+    });
     this.audio?.bowShot();
-    this.focusHero();
+  }
+
+  private hitWater(arrow: ArrowProjectile, x: number, z: number): void {
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xc8f5ff, transparent: true, opacity: 0.72, depthWrite: false,
+    });
+    const ripple = new THREE.Mesh(this.rippleGeo, material);
+    ripple.rotation.x = -Math.PI / 2;
+    ripple.position.set(x, WATER_Y + 0.015, z);
+    ripple.scale.setScalar(0.09);
+    ripple.renderOrder = 3;
+    this.scene.add(ripple);
+
+    arrow.pos.set(x, WATER_Y, z);
+    arrow.mesh.position.copy(arrow.pos);
+    arrow.mesh.lookAt(x + arrow.vel.x, WATER_Y + arrow.vel.y, z + arrow.vel.z);
+    arrow.stuck = true;
+    arrow.ttl = RIPPLE_TIME;
+    arrow.ripple = ripple;
   }
 
   private updateArrows(dt: number): void {
-    const gravity = 14;
     for (let idxA = this.arrows.length - 1; idxA >= 0; idxA--) {
       const arrow = this.arrows[idxA];
       if (arrow.stuck) {
         arrow.ttl -= dt;
         if (arrow.ttl <= 0) {
           this.scene.remove(arrow.mesh);
+          if (arrow.ripple) {
+            this.scene.remove(arrow.ripple);
+            arrow.ripple.material.dispose();
+          }
           this.arrows.splice(idxA, 1);
+        } else if (arrow.ripple) {
+          const age = RIPPLE_TIME - arrow.ttl;
+          arrow.mesh.position.y = WATER_Y - age * 2.8;
+          arrow.mesh.visible = age < 0.3;
+          arrow.ripple.scale.setScalar(0.09 + age * 0.66);
+          arrow.ripple.material.opacity = 0.72 * (arrow.ttl / RIPPLE_TIME) ** 2;
         }
         continue;
       }
 
-      arrow.vel.y -= gravity * dt;
-      arrow.pos.addScaledVector(arrow.vel, dt);
+      const step = Math.min(dt, arrow.flightLeft);
+      arrow.flightLeft -= step;
+      const previousY = arrow.pos.y;
+      arrow.pos.addScaledVector(arrow.vel, step);
+      arrow.pos.y -= 0.5 * ARROW_GRAVITY * step * step;
+      arrow.vel.y -= ARROW_GRAVITY * step;
+
+      if (arrow.pos.y <= WATER_Y) {
+        const fraction = previousY > WATER_Y
+          ? (WATER_Y - arrow.pos.y) / (previousY - arrow.pos.y)
+          : 0;
+        const x = arrow.pos.x - arrow.vel.x * step * fraction;
+        const z = arrow.pos.z - arrow.vel.z * step * fraction;
+        const i = ti(x);
+        const j = tj(z);
+        if (inGrid(i, j) && this.grid.TYPE[idx(i, j)] === T.RIVER) {
+          this.hitWater(arrow, x, z);
+          continue;
+        }
+      }
       arrow.mesh.position.copy(arrow.pos);
       arrow.mesh.lookAt(arrow.pos.x + arrow.vel.x, arrow.pos.y + arrow.vel.y, arrow.pos.z + arrow.vel.z);
 
@@ -728,7 +920,13 @@ export class HeroController {
       if (hitDeer) continue;
 
       const gy = this.grid.groundY(arrow.pos.x, arrow.pos.z);
-      if (arrow.pos.y <= gy) {
+      if (arrow.pos.y <= gy || arrow.flightLeft === 0) {
+        const i = ti(arrow.pos.x);
+        const j = tj(arrow.pos.z);
+        if (inGrid(i, j) && this.grid.TYPE[idx(i, j)] === T.RIVER) {
+          this.hitWater(arrow, arrow.pos.x, arrow.pos.z);
+          continue;
+        }
         arrow.pos.y = gy + 0.03;
         arrow.mesh.position.copy(arrow.pos);
         arrow.stuck = true;
@@ -807,7 +1005,7 @@ export class HeroController {
 
     if (building) {
       if (action.elapsed < 0.54) return this.axeEquipped ? 10 : 9;
-      this.finishDelivery(action.target);
+      this.finishDelivery(action.target, action.amount);
       this.interaction = null;
       return this.axeEquipped ? 4 : 0;
     }
@@ -830,7 +1028,7 @@ export class HeroController {
       return this.axeEquipped ? 4 : 0;
     }
 
-    if (this.coop.isConnected()) {
+    if (this.coop.isConnected() && !drop.local) {
       this.interaction = null;
       drop.mesh.position.copy(drop.origin);
       this.coop.sendWoodLoot(drop.id);
@@ -849,11 +1047,10 @@ export class HeroController {
     this.mesh.visible = this.marker.visible = true;
     if (this.grid.gridOverlay) this.grid.gridOverlay.visible = true;
     if (this.buildingSite) this.buildingSite.mesh.visible = true;
-    this.arrowCooldown = Math.max(0, this.arrowCooldown - dt);
-    this.shootAnimTimer = Math.max(0, this.shootAnimTimer - dt);
+    this.shotTime = Math.min(BOW_SHOT_TIME, this.shotTime + dt);
     this.updateArrows(dt);
 
-    if (!this.step) {
+    if (!this.step && !this.shotTarget) {
       const direction = this.queuedMove ?? [...this.heldMoves.values()].at(-1);
       this.queuedMove = null;
       let dx = 0;
@@ -891,29 +1088,52 @@ export class HeroController {
         this.step = null;
       }
     }
+    if (this.shotTarget) {
+      const target = this.shotTarget();
+      this.faceShot(target, camRight);
+      if (this.shotTime >= BOW_DRAW_TIME) {
+        this.releaseArrow(target);
+        this.shotTarget = null;
+      }
+    }
+    if (!this.step && this.rodEquipped && this.fishingPose) {
+      frame = this.fishingPose === 'hold' ? FISH_HOLD_FRAME : FISH_CAST_FRAME;
+    }
     if (this.axeEquipped) frame += 4;
     if (this.interaction && !this.step && !this.path.length) {
       frame = this.updateInteraction(dt, camRight);
-    } else if (this.shootAnimTimer > 0 && !this.step) {
-      frame = 3;
+    } else if (this.bowEquipped) {
+      frame += BOW_IDLE_FRAME;
+      if (this.shotTime < 0.1) frame = BOW_RAISE_FRAME;
+      else if (this.shotTime < BOW_DRAW_TIME) frame = BOW_RAISE_FRAME + 1;
+      else if (this.shotTime < BOW_RELEASE_END) frame = BOW_RAISE_FRAME + 2;
+      else if (this.shotTime < BOW_SHOT_TIME) frame = BOW_RAISE_FRAME + 3;
     }
 
     for (const drop of [...this.woodDrops, ...this.meatDrops]) {
       drop.mesh.visible = true;
       if (this.interaction?.kind === 'loot' && this.interaction.target === drop && this.interaction.elapsed > 0) continue;
       drop.age = Math.min(1, drop.age + dt * 3);
-      drop.mesh.position.y = drop.origin.y + Math.sin(drop.age * Math.PI) * 0.45;
+      if (drop.thrownFrom) {
+        drop.mesh.position.lerpVectors(drop.thrownFrom, drop.origin, drop.age);
+        if (drop.age === 1) delete drop.thrownFrom;
+      } else {
+        drop.mesh.position.y = drop.origin.y;
+      }
+      drop.mesh.position.y += Math.sin(drop.age * Math.PI) * 0.45;
     }
 
     const y = this.grid.groundY(this.x, this.z);
     const elapsed = this.interaction?.elapsed ?? 0;
-    const crouch = frame >= 9 ? Math.sin(Math.PI * clamp(elapsed / 0.54, 0, 1)) : 0;
+    const crouch = frame === 9 || frame === 10 ? Math.sin(Math.PI * clamp(elapsed / 0.54, 0, 1)) : 0;
     const swing =
       frame === 7
         ? 0.14 * clamp(elapsed / 0.32, 0, 1)
         : frame === 8
           ? -0.27 * clamp(1 - (elapsed - 0.32) / 0.22, 0, 1)
-          : 0;
+          : frame === BOW_RAISE_FRAME + 2
+            ? -0.1 * (BOW_RELEASE_END - this.shotTime) / (BOW_RELEASE_END - BOW_DRAW_TIME)
+            : 0;
     this.frame = frame;
     this.crouch = crouch;
     this.swing = swing;
@@ -924,5 +1144,14 @@ export class HeroController {
     this.mesh.scale.x = this.face;
     this.tex.offset.x = frame * this.tex.repeat.x;
     this.marker.position.set(this.x, y + 1.85, this.z);
+    if (this.carryMesh) {
+      this.carryMesh.visible = this.carrying !== null;
+      this.carryMesh.position.set(
+        this.x + camRight.z * -0.22 + camRight.x * this.face * 0.24,
+        y + 0.66 - 0.19 * crouch,
+        this.z + camRight.x * 0.22 + camRight.z * this.face * 0.24
+      );
+      this.carryMesh.rotation.y = camYaw;
+    }
   }
 }

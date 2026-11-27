@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { pick, rand, shade } from '../utils/math';
 import { cnv, ctex, line, pixelize } from '../utils/canvas';
+import { BOW_IDLE_FRAME, BOW_RAISE_FRAME, FISH_CAST_FRAME, FISH_HOLD_FRAME } from './TravelerFrames';
 
 export type CharacterRole =
   | 'Guard'
@@ -101,7 +102,10 @@ export function drawChar(x: CanvasRenderingContext2D, ox: number, L: CharacterLo
   const act = f === 3 || f === 7;
   const dark = shade(L.shirt, -0.28);
   if (L.pack) p('#7a5a3a', 11, 13, 3, 5);
-  const gait = f >= 4 && f <= 6 ? f - 4 : f;
+  const bow = L.role === 'Traveler' && f >= BOW_IDLE_FRAME && f < FISH_CAST_FRAME;
+  const fishing = L.role === 'Traveler' && (f === FISH_CAST_FRAME || f === FISH_HOLD_FRAME);
+  const aiming = bow && f >= BOW_RAISE_FRAME;
+  const gait = bow ? (aiming ? 0 : f - BOW_IDLE_FRAME) : f >= 4 && f <= 6 ? f - 4 : f;
   if (L.robe || L.dress) {
     const sk = L.robe ? L.shirt : shade(L.shirt, -0.15);
     p(sk, 4, 16, 8, 4);
@@ -145,7 +149,18 @@ export function drawChar(x: CanvasRenderingContext2D, ox: number, L: CharacterLo
   }
   if ((L.role === 'Priest' || L.role === 'Imam') && L.trim) p(L.trim, 7, 12, 2, 10);
 
-  if (act && L.role !== 'Guard') {
+  if (aiming) {
+    line(x, dark, ox + 5, 13, ox + 3, f === 15 ? 11 : 14, 2);
+    line(x, L.shirt, ox + 10, 13, ox + 12, f === 17 ? 14 : 11);
+    p(L.skin, f === 15 ? 5 : 3, f === 15 ? 11 : 14);
+  } else if (fishing) {
+    const handY = f === FISH_HOLD_FRAME ? 6 : 11;
+    p(dark, 3, 13, 1, 4);
+    p(L.skin, 3, 17);
+    line(x, L.shirt, ox + 11, 13, ox + 13, 12, 2);
+    line(x, L.shirt, ox + 13, 12, ox + 14, handY + 1);
+    p(L.skin, 14, handY, 2, 2);
+  } else if (act && L.role !== 'Guard') {
     p(dark, 3, 9, 1, 4);
     p(L.skin, 3, 8);
     p(dark, 12, 9, 1, 4);
@@ -229,7 +244,22 @@ export function drawChar(x: CanvasRenderingContext2D, ox: number, L: CharacterLo
       p('#dfe6ee', 13, 1, 1, 3);
     }
   }
-  if (L.role === 'Traveler' && f === 10) {
+  if (bow) {
+    const handY = aiming ? (f === 17 ? 14 : 11) : gait === 2 ? 16 : 17;
+    const gripX = 13;
+    const tipX = f === 15 ? 10 : 11;
+    const half = aiming ? 5 : 4;
+    line(x, '#f2d8a3', ox + tipX, handY - half, ox + (f === 15 ? 5 : tipX), handY);
+    line(x, '#f2d8a3', ox + (f === 15 ? 5 : tipX), handY, ox + tipX, handY + half);
+    for (const sign of [-1, 1]) {
+      line(x, '#d88b43', ox + tipX, handY + sign * half, ox + gripX, handY + sign * 2);
+      line(x, '#a96333', ox + gripX, handY + sign * 2, ox + gripX, handY);
+    }
+    if (f === 14 || f === 15) {
+      line(x, '#faf1cf', ox + (f === 15 ? 5 : 10), handY, ox + 14, handY);
+    }
+    p(L.skin, 12, handY);
+  } else if (L.role === 'Traveler' && f === 10) {
     line(x, '#a97545', ox + 4, 10, ox + 9, 17);
     p('#a2acb7', 3, 9, 3, 3);
   } else if (L.role === 'Traveler' && f >= 4 && f <= 8) {

@@ -1,4 +1,5 @@
 import { WebSocket, WebSocketServer } from 'ws';
+import { TRAVELER_FRAME_COUNT } from '../src/entities/TravelerFrames';
 import { CoopWorldStore } from './coopWorld';
 
 export interface TravelerLook {
@@ -138,7 +139,7 @@ export class MultiplayerServer {
         if (Number.isFinite(msg.x)) player.x = Math.max(-24, Math.min(52, msg.x));
         if (Number.isFinite(msg.z)) player.z = Math.max(-24, Math.min(52, msg.z));
         player.face = msg.face === -1 ? -1 : 1;
-        player.frame = Number.isFinite(msg.frame) ? Math.max(0, Math.min(10, Math.floor(msg.frame))) : 0;
+        player.frame = Number.isFinite(msg.frame) ? Math.max(0, Math.min(TRAVELER_FRAME_COUNT - 1, Math.floor(msg.frame))) : 0;
         player.crouch = Number.isFinite(msg.crouch) ? Math.max(0, Math.min(1, msg.crouch)) : 0;
         player.swing = Number.isFinite(msg.swing) ? Math.max(-1, Math.min(1, msg.swing)) : 0;
         player.lastUpdate = Date.now();
@@ -214,7 +215,7 @@ export class MultiplayerServer {
         const j = Number(msg.j);
         const res = this.coop.placeBlueprint(i, j);
         if (!res.ok) {
-          ws.send(JSON.stringify({ type: 'action_rejected', message: res.reason }));
+          ws.send(JSON.stringify({ type: 'action_rejected', action: 'blueprint_place', message: res.reason }));
           return;
         }
         this.broadcast({
@@ -231,7 +232,7 @@ export class MultiplayerServer {
         const amount = Number(msg.amount);
         const res = this.coop.depositWood(amount);
         if (!res.ok) {
-          ws.send(JSON.stringify({ type: 'action_rejected', message: res.reason }));
+          ws.send(JSON.stringify({ type: 'action_rejected', action: 'wood_deposit', message: res.reason }));
           return;
         }
         this.broadcast({
