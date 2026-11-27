@@ -1,35 +1,51 @@
 import * as THREE from 'three';
-import { RemotePlayer } from './RemotePlayer';
-import { PlayerData } from '../../server/multiplayerServer';
-import { CharacterController } from '../character/CharacterController';
+import type { WorldCoopSnapshot } from '../../server/coopWorld';
+import type { PlayerData } from '../../server/multiplayerServer';
+import type { HeroController } from '../entities/HeroController';
+import type { WorldVegetation } from '../world/Vegetation';
+import type { WorldGrid } from '../world/WorldGrid';
+import { RemoteTraveler } from './RemoteTraveler';
+
+export interface MultiplayerCallbacks {
+  onStatusChange?: (connected: boolean, playerCount: number) => void;
+  onChatMessage?: (id: string, name: string, text: string) => void;
+  onSystemMessage?: (text: string) => void;
+  onToast?: (msg: string, ms?: number) => void;
+}
 
 export class MultiplayerManager {
-  private scene: THREE.Scene;
-  private localPlayer: CharacterController;
-  private socket: WebSocket | null = null;
-
   public localId: string | null = null;
-  public localName: string = 'Novice Traveler';
-  public isConnected: boolean = false;
+  public isConnected = false;
+  public readonly peers = new Map<string, RemoteTraveler>();
 
-  private remotePlayers: Map<string, RemotePlayer> = new Map();
-  private lastSendTime: number = 0;
-  private sendIntervalMs: number = 50; // 20Hz update rate
+  private socket: WebSocket | null = null;
+  private lastSendAt = 0;
+  private readonly sendIntervalMs = 50;
+  private reconnectTimer: number | null = null;
 
-  // Events / Callbacks
-  public onConnectionChange?: (connected: boolean, count: number) => void;
-  public onChatMessage?: (senderName: string, message: string) => void;
+  private readonly scene: THREE.Scene;
+  private readonly grid: WorldGrid;
+  private readonly vegetation: WorldVegetation;
+  private readonly labelsContainer: HTMLElement;
+  private readonly callbacks: MultiplayerCallbacks;
+  private hero!: HeroController;
 
-  constructor(scene: THREE.Scene, localPlayer: CharacterController) {
-    this.scene = scene;
-    this.localPlayer = localPlayer;
+  constructor(opts: {
+    scene: THREE.Scene;
+    grid: WorldGrid;
+    vegetation: WorldVegetation;
+    labelsContainer: HTMLElement;
+    callbacks?: MultiplayerCallbacks;
+  }) {
+    this.scene = opts.scene;
+    this.grid = opts.grid;
+    this.vegetation = opts.vegetation;
+    this.labelsContainer = opts.labelsContainer;
+    this.callbacks = opts.callbacks ?? {};
+  }
 
-    // Listen to local character changes to sync with multiplayer peers
-    this.localPlayer.onCharacterChanged = (characterId: string) => {
-      this.sendCharacterChange(characterId);
-    };
-
-    this.connect();
+  public attachHero(hero: HeroController): void {
+    this.hero = hero;
   }
 
   public connect(): void {
@@ -37,223 +53,269 @@ export class MultiplayerManager {
       return;
     }
 
+    let wsUrl: string;
+    const params = new URLSearchParams(window.location.search);
+    const customServer = params.get('server');
+    if (customServer) {
+      wsUrl = customServer;
+    } else if (import.meta.env.DEV) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      wsUrl = `${protocol}//${window.location.host}/ws`;
+    } else {
+      wsUrl = 'wss://empire.ahadiihsan.com/ws';
+    }
+
     try {
-      let wsUrl: string;
-      const params = new URLSearchParams(window.location.search);
-      const customServer = params.get('server');
-
-      if (customServer) {
-        wsUrl = customServer;
-      } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        // Localhost development: connect to local standalone server (port 3030) or Vite dev server (/ws)
-        wsUrl = `ws://${window.location.hostname}:3030`;
-      } else {
-        // Production (e.g. kerajaan.web.app): connect through Cloudflare Tunnel route
-        wsUrl = 'wss://empire.ahadiihsan.com/ws';
-      }
-
-      console.log(`[Multiplayer] Connecting to ${wsUrl}...`);
       this.socket = new WebSocket(wsUrl);
-
       this.socket.onopen = () => {
-        console.log('[Multiplayer] 🌐 Connected to Prontera Game Server!');
         this.isConnected = true;
-        // Sync initial character model with server
-        this.sendCharacterChange(this.localPlayer.characterId);
-        if (this.onConnectionChange) {
-          this.onConnectionChange(true, this.remotePlayers.size + 1);
-        }
+        this.callbacks.onStatusChange?.(true, this.peers.size + 1);
       };
-
       this.socket.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          this.handleServerMessage(msg);
+          this.handleMessage(msg);
         } catch (err) {
           console.error('[Multiplayer] Failed to parse server message:', err);
         }
       };
-
       this.socket.onclose = () => {
-        console.warn('[Multiplayer] Disconnected from server. Reconnecting in 3s...');
         this.isConnected = false;
-        this.clearRemotePlayers();
-        if (this.onConnectionChange) {
-          this.onConnectionChange(false, 1);
-        }
-        setTimeout(() => this.connect(), 3000);
+        this.clearPeers();
+        this.callbacks.onStatusChange?.(false, 1);
+        if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = window.setTimeout(() => this.connect(), 3000);
       };
-
-      this.socket.onerror = (err) => {
-        console.warn('[Multiplayer] WebSocket error:', err);
+      this.socket.onerror = () => {
+        // Silently handled by onclose reconnect + offline fallback.
       };
-    } catch (err) {
-      console.warn('[Multiplayer] Could not initialize WebSocket:', err);
+    } catch {
+      // Offline mode fallback.
     }
   }
 
-  private handleServerMessage(msg: any): void {
+  private send(payload: object): void {
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify(payload));
+    }
+  }
+
+  public sendChat(text: string): void {
+    this.send({ type: 'chat', text });
+  }
+
+  public sendName(name: string): void {
+    this.send({ type: 'set_name', name });
+  }
+
+  public sendTreeHit(treeIndex: number): void {
+    const tree = this.vegetation.trees[treeIndex];
+    if (!tree) return;
+    this.send({ type: 'tree_hit', treeIndex, i: tree.i, j: tree.j });
+  }
+
+  public sendWoodLoot(dropId: string): void {
+    this.send({ type: 'wood_loot', dropId });
+  }
+
+  public sendBlueprintPlace(i: number, j: number): void {
+    this.send({ type: 'blueprint_place', i, j });
+  }
+
+  public sendWoodDeposit(amount: number): void {
+    this.send({ type: 'wood_deposit', amount });
+  }
+
+  public update(dt: number, camYaw: number, demoActive: boolean): void {
+    for (const peer of this.peers.values()) {
+      peer.update(dt, camYaw, this.grid, demoActive);
+    }
+
+    if (this.isConnected && this.hero) {
+      const now = performance.now();
+      if (now - this.lastSendAt >= this.sendIntervalMs) {
+        this.lastSendAt = now;
+        this.send({
+          type: 'update',
+          x: this.hero.x,
+          z: this.hero.z,
+          face: this.hero.face,
+          frame: this.hero.frame,
+          crouch: this.hero.crouch,
+          swing: this.hero.swing,
+        });
+      }
+    }
+  }
+
+  private handleMessage(msg: any): void {
     switch (msg.type) {
       case 'welcome': {
+        const isFirstWelcome = this.localId === null;
         this.localId = msg.id;
-        if (msg.player && msg.player.name) {
-          this.localName = msg.player.name;
-        }
-        console.log(`[Multiplayer] Assigned player ID: ${this.localId} as ${this.localName}`);
-
-        // Spawn existing players already in room
-        if (Array.isArray(msg.existingPlayers)) {
-          for (const pData of msg.existingPlayers) {
-            this.spawnRemotePlayer(pData);
+        if (msg.player) {
+          if (isFirstWelcome) {
+            this.hero.setSpawnTile(msg.player.x, msg.player.z);
+          }
+          if (msg.player.name) {
+            this.hero.name = msg.player.name;
+            this.callbacks.onSystemMessage?.(`Connected as ${msg.player.name}.`);
           }
         }
-        if (this.onConnectionChange) {
-          this.onConnectionChange(true, this.remotePlayers.size + 1);
+        this.clearPeers();
+        if (Array.isArray(msg.existingPlayers)) {
+          for (const p of msg.existingPlayers as PlayerData[]) {
+            this.spawnPeer(p);
+          }
         }
+        if (msg.worldState) {
+          this.hydrateWorldState(msg.worldState as WorldCoopSnapshot);
+        }
+        this.callbacks.onStatusChange?.(true, this.peers.size + 1);
         break;
       }
 
       case 'player_joined': {
         if (msg.player && msg.player.id !== this.localId) {
-          console.log(`[Multiplayer] Player joined: ${msg.player.name}`);
-          this.spawnRemotePlayer(msg.player);
-          if (this.onConnectionChange) {
-            this.onConnectionChange(true, this.remotePlayers.size + 1);
-          }
+          this.spawnPeer(msg.player as PlayerData);
+          this.callbacks.onStatusChange?.(true, this.peers.size + 1);
+          this.callbacks.onSystemMessage?.(`${msg.player.name} joined Emberbrook Hollow.`);
         }
         break;
       }
 
       case 'player_left': {
-        if (msg.id && this.remotePlayers.has(msg.id)) {
-          const p = this.remotePlayers.get(msg.id)!;
-          console.log(`[Multiplayer] Player left: ${p.name}`);
-          p.destroy(this.scene);
-          this.remotePlayers.delete(msg.id);
-          if (this.onConnectionChange) {
-            this.onConnectionChange(true, this.remotePlayers.size + 1);
-          }
+        const peer = this.peers.get(msg.id);
+        if (peer) {
+          this.callbacks.onSystemMessage?.(`${peer.name} left.`);
+          peer.destroy(this.scene);
+          this.peers.delete(msg.id);
+          this.callbacks.onStatusChange?.(true, this.peers.size + 1);
         }
         break;
       }
 
       case 'state_sync': {
-        if (Array.isArray(msg.players)) {
-          for (const pData of msg.players) {
-            if (pData.id === this.localId) continue; // Skip local player
-            const remote = this.remotePlayers.get(pData.id);
-            if (remote) {
-              remote.updateState(pData);
-            } else {
-              this.spawnRemotePlayer(pData);
-            }
-          }
-        }
-        break;
-      }
-
-      case 'player_emote': {
-        const remote = this.remotePlayers.get(msg.id);
-        if (remote) {
-          remote.showEmote(msg.emote);
-        }
-        break;
-      }
-
-      case 'player_character_changed': {
-        const remote = this.remotePlayers.get(msg.id);
-        if (remote && msg.characterId) {
-          remote.setCharacter(msg.characterId);
+        if (!Array.isArray(msg.players)) break;
+        for (const p of msg.players as PlayerData[]) {
+          if (p.id === this.localId) continue;
+          const peer = this.peers.get(p.id);
+          if (peer) peer.applyState(p);
+          else this.spawnPeer(p);
         }
         break;
       }
 
       case 'player_chat': {
-        const remote = this.remotePlayers.get(msg.id);
-        if (remote) {
-          remote.showChat(msg.text);
+        if (msg.id !== this.localId) {
+          this.peers.get(msg.id)?.showChat(msg.text);
         }
-        if (this.onChatMessage) {
-          this.onChatMessage(msg.name, msg.text);
+        this.callbacks.onChatMessage?.(msg.id, msg.name, msg.text);
+        break;
+      }
+
+      case 'player_renamed': {
+        if (msg.id === this.localId) {
+          this.hero.name = msg.name;
+        } else {
+          this.peers.get(msg.id)?.setName(msg.name);
         }
+        this.callbacks.onSystemMessage?.(`Traveler is now known as ${msg.name}.`);
+        break;
+      }
+
+      case 'tree_updated': {
+        const drop = msg.drop;
+        this.hero.applyTreeHitVisualAndFX(msg.treeIndex, msg.hits, false);
+        if (drop) {
+          this.hero.spawnWoodDrop(drop.id, drop.i, drop.j, drop.quantity);
+          if (msg.playerId === this.localId) {
+            this.callbacks.onToast?.('Click or tap the logs to collect wood.', 2000);
+          }
+        }
+        break;
+      }
+
+      case 'wood_looted': {
+        this.hero.removeWoodDrop(msg.dropId);
+        if (msg.playerId === this.localId) {
+          this.hero.wood += msg.quantity;
+          this.hero.onBuildStatusChange?.();
+          this.callbacks.onToast?.(`+${msg.quantity} wood`, 1600);
+        }
+        break;
+      }
+
+      case 'blueprint_placed': {
+        this.hero.applyBlueprintLocal(
+          msg.i,
+          msg.j,
+          true,
+          msg.playerId === this.localId ? undefined : msg.playerName
+        );
+        break;
+      }
+
+      case 'wood_deposited': {
+        if (msg.playerId === this.localId) {
+          this.hero.wood = Math.max(0, this.hero.wood - msg.accepted);
+        }
+        this.hero.applyWoodDepositLocal(
+          msg.stored,
+          msg.accepted,
+          true,
+          msg.playerId === this.localId ? undefined : msg.playerName
+        );
+        break;
+      }
+
+      case 'house_completed': {
+        this.hero.applyHouseCompletedLocal(
+          msg.i,
+          msg.j,
+          msg.roof ?? 'thatch',
+          true,
+          msg.playerId === this.localId ? undefined : msg.playerName
+        );
+        break;
+      }
+
+      case 'action_rejected': {
+        if (msg.message) this.callbacks.onToast?.(msg.message, 2500);
         break;
       }
     }
   }
 
-  private spawnRemotePlayer(data: PlayerData): void {
-    if (this.remotePlayers.has(data.id)) return;
-    const remote = new RemotePlayer(data);
-    this.scene.add(remote.mesh);
-    this.remotePlayers.set(data.id, remote);
-  }
-
-  private clearRemotePlayers(): void {
-    for (const [_, p] of this.remotePlayers) {
-      p.destroy(this.scene);
+  private hydrateWorldState(snapshot: WorldCoopSnapshot): void {
+    for (const [indexStr, hits] of Object.entries(snapshot.treeHits)) {
+      const idxNum = Number(indexStr);
+      if (hits > 0) this.vegetation.setTreeHitVisual(idxNum, hits);
     }
-    this.remotePlayers.clear();
-  }
-
-  public update(delta: number, cameraYaw: number): void {
-    // 1. Update all remote player instances
-    for (const [_, p] of this.remotePlayers) {
-      p.update(delta, cameraYaw);
+    for (const drop of snapshot.woodDrops) {
+      this.hero.spawnWoodDrop(drop.id, drop.i, drop.j, drop.quantity);
     }
-
-    // 2. Throttled send of local player state to server (20Hz)
-    const now = performance.now();
-    if (this.isConnected && this.socket && this.socket.readyState === WebSocket.OPEN) {
-      if (now - this.lastSendTime >= this.sendIntervalMs) {
-        this.lastSendTime = now;
-        this.sendLocalUpdate();
+    for (const house of snapshot.completedHouses) {
+      this.hero.applyHouseCompletedLocal(house.i, house.j, house.roof, false);
+    }
+    if (snapshot.buildingSite) {
+      this.hero.applyBlueprintLocal(snapshot.buildingSite.i, snapshot.buildingSite.j, false);
+      if (snapshot.buildingSite.stored > 0) {
+        this.hero.applyWoodDepositLocal(snapshot.buildingSite.stored, snapshot.buildingSite.stored, false);
       }
     }
   }
 
-  private sendLocalUpdate(): void {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
-
-    const payload = {
-      type: 'update',
-      x: parseFloat(this.localPlayer.position.x.toFixed(2)),
-      z: parseFloat(this.localPlayer.position.z.toFixed(2)),
-      facingAngle: parseFloat(this.localPlayer.facingAngle.toFixed(3)),
-      isMoving: (this.localPlayer as any).isMoving ?? false,
-      isSitting: this.localPlayer.isSitting,
-      direction: (this.localPlayer as any).direction ?? 'down',
-      frameIndex: (this.localPlayer as any).frameIndex ?? 0,
-      characterId: this.localPlayer.characterId
-    };
-
-    this.socket.send(JSON.stringify(payload));
+  private spawnPeer(data: PlayerData): void {
+    if (this.peers.has(data.id)) return;
+    const peer = new RemoteTraveler(data, this.scene, this.labelsContainer);
+    this.peers.set(data.id, peer);
   }
 
-  public sendCharacterChange(characterId: string): void {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
-    this.socket.send(JSON.stringify({
-      type: 'update_character',
-      characterId: characterId
-    }));
-  }
-
-  public sendEmote(symbol: string): void {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
-    this.socket.send(JSON.stringify({
-      type: 'emote',
-      emote: symbol
-    }));
-  }
-
-  public sendChat(text: string): void {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
-    this.socket.send(JSON.stringify({
-      type: 'chat',
-      text: text
-    }));
-  }
-
-  public getOnlineCount(): number {
-    return this.remotePlayers.size + 1;
+  private clearPeers(): void {
+    for (const peer of this.peers.values()) {
+      peer.destroy(this.scene);
+    }
+    this.peers.clear();
   }
 }

@@ -1,14 +1,122 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Elderstone Kingdom - HD-2D Octopath Medieval Village</title>
-    <link rel="stylesheet" href="/src/style.css" />
-  </head>
-  <body>
-    <div id="app"></div>
-    <div id="tilt-shift-lens"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Emberbrook Hollow</title>
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="title"><div class="crest">⚜</div><div><h1>Emberbrook Hollow</h1><p>RPG · FREE EXPLORATION</p></div></div>
+
+<div id="worldLabels" aria-hidden="true"></div>
+<section id="chat" aria-label="Local chat">
+  <div class="chatBar">
+    <button id="chatToggle" class="btn panel" aria-controls="chatPanel" aria-expanded="false">Chat</button>
+    <span id="mpStatus" class="panel" title="Multiplayer status">Offline · 1 online</span>
+  </div>
+  <div id="chatPanel" class="panel hide">
+    <ul id="chatLog" role="log" aria-label="Chat messages" tabindex="0"></ul>
+    <form id="chatForm">
+      <input id="chatInput" type="text" aria-label="Village chat message" placeholder="Say something (/name Name)" maxlength="120" autocomplete="off">
+      <button class="btn" type="submit">Send</button>
+    </form>
+  </div>
+</section>
+
+<button id="deckToggle" class="btn panel" aria-controls="deck" aria-expanded="false">🎲 DM Deck</button>
+<aside id="deck" class="panel collapsed" inert>
+  <header><span>Dungeon Master Deck</span><span>⚜</span></header>
+  <section>
+    <h3>⏳ Day / Night</h3>
+    <div class="row"><input id="time" type="range" min="0" max="24" step="0.01" value="17.6"><output id="timeOut">17:36</output></div>
+    <div class="sub"><span id="phase">Golden Hour</span><span>🌙 · 🌅 · ☀ · 🌇</span></div>
+    <label class="chk"><input id="flow" type="checkbox"> Let time flow</label>
+  </section>
+  <section>
+    <h3>🌦 Weather</h3>
+    <div class="row"><input id="weather" class="plain" type="range" min="0" max="1" step="0.001" value="0"><output id="weatherOut">Clear</output></div>
+    <div class="grid2" style="margin-top:10px">
+      <button class="btn" data-preset="golden">🌅 Golden Hour</button>
+      <button class="btn" data-preset="midnight">🏮 Midnight Lanterns</button>
+      <button class="btn" data-preset="storm">⛈ Heavy Thunderstorm</button>
+      <button class="btn" data-preset="noon">☀ Bright Noon</button>
+    </div>
+  </section>
+  <section>
+    <h3>⚔ World Events</h3>
+    <div class="events">
+      <button id="evFestival" class="btn">🎉 Harvest Festival</button>
+      <button id="evRaid" class="btn danger">🐉 Dragon Raid</button>
+      <button id="evPeace" class="btn">🕊 Restore Peace</button>
+    </div>
+  </section>
+  <section>
+    <h3>🎥 Lens</h3>
+    <div class="row"><span style="font-size:12px;width:62px">Tilt-shift</span><input id="tilt" class="plain" type="range" min="0" max="1.6" step="0.01" value="1"></div>
+    <div class="row" style="margin-top:8px"><span style="font-size:12px;width:62px">Focus</span><input id="focus" class="plain" type="range" min="0.25" max="0.75" step="0.005" value="0.5"></div>
+    <label class="chk"><input id="orbit" type="checkbox" checked> Gentle auto-orbit</label>
+    <label class="chk"><input id="ffToggle" type="checkbox" checked> Fireflies &amp; pollen</label>
+  </section>
+  <section>
+    <h3>🎵 Soundtrack</h3>
+    <div class="row"><button id="musicBtn" class="btn">🔈 Start Music</button><input id="vol" class="plain" type="range" min="0" max="1" step="0.01" value="0.7"></div>
+    <div id="nowPlaying">♪ Click anywhere to wake the bards</div>
+  </section>
+</aside>
+
+<div id="inspector" class="panel off" inert>
+  <button class="btn x" id="inspClose">✕</button>
+  <div class="top">
+    <canvas id="portrait" width="16" height="24"></canvas>
+    <div style="flex:1;min-width:0">
+      <div id="iName">—</div><div id="iClass">—</div>
+      <div class="bar" id="iHp"><i></i><span></span></div>
+      <div class="bar" id="iSta"><i></i><span></span></div>
+      <div class="bar" id="iXp"><i></i><span></span></div>
+    </div>
+  </div>
+  <div class="stats" id="iStats"></div>
+  <div class="kv"><span>Mood</span><b id="iMood">—</b></div>
+  <div class="kv"><span>Activity</span><b id="iAct">—</b></div>
+  <div class="kv"><span>Purse</span><b id="iGold">—</b></div>
+  <h4>Inventory</h4>
+  <ul id="iInv"></ul>
+  <button class="btn" id="followBtn">📍 Follow with camera</button>
+</div>
+
+<div id="banner"><b></b><span></span></div>
+<div id="caption" class="panel"><b></b><span></span></div>
+<div id="playerControls" class="panel" role="group" aria-label="Player controls">
+  <span id="moveHint"><b>WASD</b>, <b>arrow keys</b>, or click a tile</span>
+  <div id="movePad">
+    <button class="btn" data-move="up" aria-label="Walk up">↑</button>
+    <button class="btn" data-move="left" aria-label="Walk left">←</button>
+    <button class="btn" data-move="down" aria-label="Walk down">↓</button>
+    <button class="btn" data-move="right" aria-label="Walk right">→</button>
+  </div>
+  <div id="chopProgress" class="panel hide" role="status"></div>
+  <div id="buildStatus" class="panel hide">
+    <output id="buildProgress" aria-label="House progress"></output>
+    <button id="depositWood" class="btn">Deposit wood</button>
+  </div>
+  <div id="toolBar" role="group" aria-label="Tools">
+    <button id="axeTool" class="btn" aria-pressed="false" title="Equip axe to chop trees">🪓 Axe</button>
+    <button id="blueprintTool" class="btn" aria-pressed="false" title="Place a house blueprint">Blueprint</button>
+    <output id="woodCount" aria-label="Wood collected">Wood 0</output>
+    <button id="playerCamera" class="btn" aria-label="Center on hero">Center</button>
+  </div>
+</div>
+<div id="toast" class="panel" role="status"></div>
+
+<button id="demoBtn" class="btn panel">🎬 Auto-Demo &amp; Save .WEBM</button>
+<div id="recHud" class="panel hide">
+  <div class="l"><span class="dot"></span><span>REC</span><span id="recTime">00:00</span><span id="recStep" style="margin-left:auto"></span></div>
+  <div class="track"><i id="recBar"></i></div>
+</div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
 </html>

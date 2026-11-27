@@ -5,7 +5,7 @@ import { MultiplayerServer } from './server/multiplayerServer';
 function multiplayerPlugin(): Plugin {
   let mpServer: MultiplayerServer | null = null;
   return {
-    name: 'ragnarok-multiplayer',
+    name: 'emberbrook-multiplayer',
     configureServer(server) {
       if (!server.httpServer) return;
       mpServer = new MultiplayerServer({ noServer: true });
@@ -18,8 +18,8 @@ function multiplayerPlugin(): Plugin {
         }
       });
 
-      console.log('⚔️ Ragnarok Online Multiplayer WebSocket engine attached on /ws');
-    }
+      console.log('⚜ Emberbrook Hollow Multiplayer WebSocket engine attached on /ws');
+    },
   };
 }
 
@@ -29,12 +29,12 @@ export default defineConfig({
     port: 3000,
     host: true,
     fs: {
-      allow: ['.']
-    }
+      allow: ['.'],
+    },
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
-    }
-  }
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
 });

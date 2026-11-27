@@ -1,74 +1,254 @@
+import * as THREE from 'three';
 import './firebase';
-import { Engine } from './core/Engine';
+import { enableRuntimeRandom, resetWorldSeed, V3 } from './utils/math';
+import { world } from './core/WorldState';
+import { createTextures } from './world/Textures';
+import { WorldGrid } from './world/WorldGrid';
+import { buildTerrain } from './world/TerrainBuilder';
+import { buildBuildings } from './world/Buildings';
+import { buildVegetation } from './world/Vegetation';
+import { buildWildlife } from './world/Wildlife';
+import { ParticleSystem } from './core/Particles';
+import { AudioEngine } from './core/AudioEngine';
 import { Environment } from './core/Environment';
-import { TownMap } from './map/TownMap';
-import { InputManager } from './character/InputManager';
-import { CharacterController } from './character/CharacterController';
-import { PlayerCrowd } from './character/PlayerCrowd';
-import { ROCharacterAtlas } from './character/ROCharacterAtlas';
+import { Engine } from './core/Engine';
+import { Dragon } from './entities/Dragon';
+import { createVillagers } from './entities/Villager';
+import { HeroController } from './entities/HeroController';
 import { MultiplayerManager } from './multiplayer/MultiplayerManager';
 import { HUD } from './ui/HUD';
+import { AutoDemo } from './ui/AutoDemo';
 
-async function bootstrap() {
-  try {
-    // 1. Initialize Core Three.js Engine
-    const engine = new Engine('app');
+function bootstrap(): void {
+  const canvas = document.getElementById('c') as HTMLCanvasElement | null;
+  const labelsContainer = document.getElementById('worldLabels');
+  if (!canvas || !labelsContainer) return;
 
-    // 2. Load Official Ragnarok Online Sprite Atlas (Arch Bishop + Blue Hair)
-    await ROCharacterAtlas.init();
+  // Deterministic seed for all world textures, terrain, buildings, vegetation, and initial villagers
+  resetWorldSeed(20261019);
 
-    // 3. Setup Prontera Environment & Terrain
-    const env = new Environment(engine.scene);
-    engine.registerUpdatable(env);
+  const { TX, MAT, roofMat } = createTextures();
+  const grid = new WorldGrid();
 
-    // 4. Assemble Prontera Town Map (Central Fountain, Vending Carts, Castle, Canal)
-    const townMap = new TownMap();
-    await townMap.assembleTown();
-    engine.scene.add(townMap.group);
+  // Create Engine (scene, camera, renderer, post-processing)
+  const tempTint = new V3(1, 1, 1);
+  const engine = new Engine(canvas, tempTint, new V3(0, 1.2, 0));
 
-    // 5. Input Manager with RO1 Click-to-Move Raycasting on Ground
-    const input = new InputManager();
-    input.initRaycaster(engine.camera, env.groundMesh);
+  const mapSurfaces = buildTerrain(engine.scene, grid, MAT);
+  const buildings = buildBuildings(engine.scene, grid, TX, MAT, roofMat, mapSurfaces);
+  const vegetation = buildVegetation(engine.scene, grid, buildings.nearDoor, MAT);
+  const updateWildlife = buildWildlife(engine.scene, grid);
+  grid.computeReachability();
+  grid.createGridOverlay(engine.scene);
 
-    // 6. Ragnarok Online Player Character (Click-to-Move, Sitting /sit, Nametag)
-    const player = new CharacterController(engine.camera, input, townMap);
-    engine.scene.add(player.mesh);
-    engine.registerUpdatable(player);
+  const particles = new ParticleSystem(engine.scene);
+  const env = new Environment(engine.scene, grid);
+  tempTint.copy(env.tint);
 
-    // 7. Real-Time Multiplayer Manager (WebSocket Synchronization, Remote Players, Chat)
-    const multiplayer = new MultiplayerManager(engine.scene, player);
-    engine.registerUpdatable({
-      update: (delta) => multiplayer.update(delta, player.getCameraYaw())
+  const audio = new AudioEngine(() => ({
+    x: engine.cam.target.x,
+    z: engine.cam.target.z,
+    dist: engine.cam.dist,
+  }));
+
+  const dragon = new Dragon(engine.scene);
+
+  let villagers: ReturnType<typeof createVillagers> = [];
+  villagers = createVillagers(buildings.houses, buildings.chapel.door, {
+    scene: engine.scene,
+    grid,
+    buildings,
+    fxAdd: particles.fxAdd,
+    fxNorm: particles.fxNorm,
+    audio,
+    camRight: engine.camRight,
+    getCamYaw: () => engine.cam.yaw,
+    getDragonState: () => dragon,
+    getVillagerCount: () => villagers.length,
+  });
+
+  // Wire MultiplayerManager + HeroController + HUD
+  let hud!: HUD;
+  const multiplayer = new MultiplayerManager({
+    scene: engine.scene,
+    grid,
+    vegetation,
+    labelsContainer,
+    callbacks: {
+      onStatusChange: (connected, count) => hud?.setMultiplayerStatus(connected, count),
+      onChatMessage: (_id, name, text) => hud?.appendChatMessage(name, text),
+      onSystemMessage: (text) => hud?.appendChatMessage('System', text, true),
+      onToast: (msg, ms) => hud?.toast(msg, ms),
+    },
+  });
+
+  const hero = new HeroController({
+    scene: engine.scene,
+    grid,
+    buildings,
+    vegetation,
+    TX,
+    MAT,
+    fxNorm: particles.fxNorm,
+    villagers,
+    toast: (msg, ms) => hud?.toast(msg, ms),
+    focusHero: () => hud?.focusHero(),
+    coop: {
+      isConnected: () => multiplayer.isConnected,
+      sendTreeHit: (idx) => multiplayer.sendTreeHit(idx),
+      sendWoodLoot: (id) => multiplayer.sendWoodLoot(id),
+      sendBlueprintPlace: (i, j) => multiplayer.sendBlueprintPlace(i, j),
+      sendWoodDeposit: (amt) => multiplayer.sendWoodDeposit(amt),
+    },
+  });
+  multiplayer.attachHero(hero);
+
+  // Align camera target with hero spawn
+  engine.cam.target.set(hero.x, grid.groundY(hero.x, hero.z) + 0.75, hero.z);
+  engine.goal.target.copy(engine.cam.target);
+
+  hud = new HUD({
+    engine,
+    grid,
+    buildings,
+    vegetation,
+    mapSurfaces,
+    TX,
+    fxNorm: particles.fxNorm,
+    audio,
+    dragon,
+    villagers,
+    hero,
+    multiplayer,
+  });
+
+  const autoDemo = new AutoDemo({
+    engine,
+    env,
+    audio,
+    buildings,
+    dragon,
+    villagers,
+    hero,
+    hud,
+  });
+  hud.bindAutoDemo(
+    () => autoDemo.start(),
+    () => autoDemo.active
+  );
+  (window as unknown as { startAutoDemo: () => Promise<void> }).startAutoDemo = () => autoDemo.start();
+
+  const onResize = () =>
+    engine.resize((pr) => {
+      particles.fxAdd.mat.uniforms.pr.value =
+        particles.fxNorm.mat.uniforms.pr.value =
+        env.fireflies.m.uniforms.pr.value =
+          pr;
+    });
+  window.addEventListener('resize', onResize);
+  onResize();
+
+  // World generation complete — switch to runtime randomness
+  enableRuntimeRandom();
+  multiplayer.connect();
+
+  let last = performance.now();
+  function frame(now: number): void {
+    requestAnimationFrame(frame);
+    const real = Math.min(0.5, (now - last) / 1000);
+    const dt = Math.min(0.05, real);
+    last = now;
+    world.T += dt;
+
+    engine.updateTweens(real);
+    if (world.flow) world.time = (world.time + dt * 0.08) % 24;
+    if (world.raid && (world.raidT += dt) > 34 && !autoDemo.active) hud.endRaid();
+
+    env.applyEnvironment(dt, engine.scene, buildings, MAT, audio);
+    tempTint.copy(env.tint);
+
+    hero.update(dt, engine.cam.yaw, engine.camRight, autoDemo.active);
+    multiplayer.update(dt, engine.cam.yaw, autoDemo.active);
+    updateWildlife(world.T);
+
+    engine.updateCamera(dt, {
+      followHero: hud.followHero,
+      followSelected: hud.follow,
+      demoActive: autoDemo.active,
+      heroPos: { x: hero.x, y: grid.groundY(hero.x, hero.z), z: hero.z },
+      selectedPos: hud.selected
+        ? {
+            x: hud.selected.x,
+            y: grid.groundY(hud.selected.x, hud.selected.z),
+            z: hud.selected.z,
+            hidden: hud.selected.hidden,
+          }
+        : null,
+      skyGroup: env.skyGroup,
+      sun: env.sun,
+      sunDir: env.sunDir,
+      rainCenter: env.rain.m.uniforms.center.value,
     });
 
-    // 8. Prontera Player Crowd (Sitters, Wanders, Vending Banners, scalable up to 1,000)
-    const crowd = new PlayerCrowd(townMap, 1000);
-    crowd.setCrowdCount(0); // Clean, spacious default so player character is clearly visible
-    engine.scene.add(crowd.group);
-    engine.registerUpdatable({
-      update: (delta, elapsed) => crowd.update(delta, elapsed, player.getCameraYaw())
+    for (const v of villagers) {
+      v.update(dt);
+      env.tintActor(v, buildings.lightSources, particles.fires);
+    }
+    env.tintActor(hero, buildings.lightSources, particles.fires);
+    for (const peer of multiplayer.peers.values()) {
+      env.tintActor(peer, buildings.lightSources, particles.fires);
+    }
+
+    dragon.update(dt, {
+      camYaw: engine.cam.yaw,
+      camRight: engine.camRight,
+      grid,
+      villagers,
+      particles,
+      audio,
+    });
+    dragon.mat.color.copy(env.spriteTint).addScalar(dragon.flash * 0.25);
+
+    buildings.mill.wheel.rotation.x -= dt * 0.9;
+    TX.water.offset.set(Math.sin(world.T * 0.3) * 0.05, world.T * 0.12);
+    TX.falls.offset.y = world.T * 0.9;
+    env.fireflies.m.uniforms.time.value = env.rain.m.uniforms.time.value = world.T;
+
+    particles.update(dt, {
+      grid,
+      buildings,
+      camTarget: engine.cam.target,
+      bonLight: env.bonLight,
+      fireLight: env.fireLight,
+      dragonFlash: dragon.flash,
+      dragonBreathing: dragon.breathing,
+      dragonTarget: dragon.target,
+      audio,
+      onStrike: () => env.strike(audio),
+      bolt: env.bolt,
     });
 
-    // 9. RO1 Classic Windows HUD (Basic Info, Chat Box, Hotbar, Emotes, Minimap, DoF)
-    const hud = new HUD(townMap, player, input, crowd, engine.dofPass, multiplayer);
-    hud.bindTimeControls(env);
-    engine.registerUpdatable({
-      update: () => hud.update()
-    });
+    if (hud.selected && !hud.selected.hidden) {
+      const y = grid.groundY(hud.selected.x, hud.selected.z);
+      hud.selRing.visible = hud.selArrow.visible = true;
+      hud.selRing.position.set(hud.selected.x, y + 0.04, hud.selected.z);
+      (hud.selRing.material as THREE.MeshBasicMaterial).opacity = 0.6 + 0.4 * Math.sin(world.T * 6);
+      hud.selArrow.position.set(
+        hud.selected.x,
+        y + 1.5 * hud.selected.sc + 0.45 + Math.sin(world.T * 5) * 0.08,
+        hud.selected.z
+      );
+    } else {
+      hud.selRing.visible = hud.selArrow.visible = false;
+    }
 
-    // 10. Smooth reveal
-    hud.updateLoading(100, 100, 'Shepherd’s Clearing');
-    setTimeout(() => {
-      hud.hideLoading();
-    }, 250);
-
-    // 11. Start Game Loop
-    engine.start();
-
-    console.log('⚔️ Ragnarok Online 1 Multiplayer Prontera simulation running at 75 FPS!');
-  } catch (err) {
-    console.error('Initialization error:', err);
+    hud.updateUI(dt);
+    engine.render();
+    hud.updateNameLabels(now);
+    autoDemo.compositeIfActive();
   }
+
+  requestAnimationFrame(frame);
 }
 
 window.addEventListener('DOMContentLoaded', bootstrap);
