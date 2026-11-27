@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clamp, lerp, pick, R, V3 } from '../utils/math';
-import { fmtTime, overlay, phaseName, PRESETS, weatherName, world } from '../core/WorldState';
+import { fmtTime, phaseName, PRESETS, weatherName, world } from '../core/WorldState';
 import { N, ORIGIN, PCW, ti, tj, WorldGrid } from '../world/WorldGrid';
 import type { ProceduralTextures } from '../world/Textures';
 import type { WorldBuildings } from '../world/Buildings';
@@ -57,8 +57,6 @@ export class HUD {
   private readonly villagers: Villager[];
   private readonly hero: HeroController;
   private readonly multiplayer: MultiplayerManager;
-  private onStartAutoDemo?: () => void;
-  private isDemoActive: () => boolean = () => false;
 
   constructor(opts: {
     engine: Engine;
@@ -134,12 +132,6 @@ export class HUD {
     this.refreshBuildStatus();
   }
 
-  public bindAutoDemo(startFn: () => void, isActiveFn: () => boolean): void {
-    this.onStartAutoDemo = startFn;
-    this.isDemoActive = isActiveFn;
-    $('demoBtn').addEventListener('click', startFn);
-  }
-
   private createNameLabel(name: string, isHero = false): HTMLDivElement {
     const label = document.createElement('div');
     label.className = isHero ? 'nameTag heroTag hide' : 'nameTag hide';
@@ -183,7 +175,6 @@ export class HUD {
     b.className = `show ${style}`;
     window.clearTimeout(this.bannerTimer);
     this.bannerTimer = window.setTimeout(() => (b.className = style), dur);
-    overlay.banner = { title, sub, style, t0: performance.now(), until: performance.now() + dur };
   }
 
   public toast = (msg: string, ms = 3200): void => {
@@ -531,7 +522,6 @@ export class HUD {
       const dy = e.clientY - p.y;
       p.x = e.clientX;
       p.y = e.clientY;
-      if (this.isDemoActive()) return;
       if (this.downPos && Math.hypot(e.clientX - this.downPos.x, e.clientY - this.downPos.y) < 6) return;
       this.downPos = null;
       this.engine.lastInput = world.T;
@@ -568,8 +558,7 @@ export class HUD {
         clickStart &&
         Math.hypot(e.clientX - clickStart.x, e.clientY - clickStart.y) < 6 &&
         e.type === 'pointerup' &&
-        e.button === 0 &&
-        !this.isDemoActive()
+        e.button === 0
       ) {
         const villager = this.pickAt(e.clientX, e.clientY);
         const tile = this.pickMapTile();
@@ -611,7 +600,6 @@ export class HUD {
       'wheel',
       (e) => {
         e.preventDefault();
-        if (this.isDemoActive()) return;
         this.engine.lastInput = world.T;
         this.engine.goal.dist = clamp(this.engine.goal.dist * Math.exp(e.deltaY * 0.0012), 16, 120);
       },
@@ -632,7 +620,7 @@ export class HUD {
         $('chatToggle').focus();
         return;
       }
-      if (e.key === 'Enter' && !e.repeat && !this.isDemoActive() && e.target === document.body) {
+      if (e.key === 'Enter' && !e.repeat && e.target === document.body) {
         e.preventDefault();
         this.setChatOpen(true);
         return;
@@ -644,7 +632,6 @@ export class HUD {
       const direction = MOVE_KEYS.get(e.code);
       if (
         direction &&
-        !this.isDemoActive() &&
         !e.ctrlKey &&
         !e.metaKey &&
         !e.altKey &&
@@ -662,7 +649,6 @@ export class HUD {
         return;
       }
       this.audio.resume();
-      if (e.key === 'r' || e.key === 'R') this.onStartAutoDemo?.();
       if (e.key === 'Escape') {
         this.hero.setBlueprintMode(false);
         this.select(null);
@@ -726,13 +712,12 @@ export class HUD {
   }
 
   public updateNameLabels(now: number): void {
-    const demoActive = this.isDemoActive();
     this.heroNameLabel.firstElementChild!.textContent = this.hero.name;
-    this.updateNameLabel(this.heroNameLabel, this.hero.mesh, 2.12, !demoActive);
+    this.updateNameLabel(this.heroNameLabel, this.hero.mesh, 2.12, true);
     this.speechBubble.classList.toggle('hide', now >= this.bubbleUntil);
 
     for (const peer of this.multiplayer.peers.values()) {
-      this.updateNameLabel(peer.labelEl, peer.mesh, 2.12, !demoActive);
+      this.updateNameLabel(peer.labelEl, peer.mesh, 2.12, true);
       peer.updateBubbleVisibility(now);
     }
 
@@ -741,7 +726,7 @@ export class HUD {
         this.npcNameLabels[i],
         v.mesh,
         1.5 * v.sc + 0.24,
-        !demoActive && !v.hidden && Math.hypot(v.x - this.hero.x, v.z - this.hero.z) <= this.npcNameRange
+        !v.hidden && Math.hypot(v.x - this.hero.x, v.z - this.hero.z) <= this.npcNameRange
       )
     );
   }

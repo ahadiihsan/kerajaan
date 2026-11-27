@@ -65,7 +65,6 @@ export class AudioEngine {
   public vol = 0.7;
   public mode: MusicMode = 'peace';
   public want: MusicMode = 'peace';
-  public dest: MediaStreamAudioDestinationNode | null = null;
   private step = 0;
   private nextT = 0;
   private mi = 4;
@@ -97,8 +96,6 @@ export class AudioEngine {
     comp.release.value = 0.2;
     this.master.connect(comp);
     comp.connect(c.destination);
-    this.dest = c.createMediaStreamDestination();
-    comp.connect(this.dest);
     this.music = c.createGain();
     this.music.gain.value = 0.55;
     this.music.connect(this.master);

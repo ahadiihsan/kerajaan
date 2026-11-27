@@ -85,8 +85,8 @@ export class RemoteTraveler {
     if (data.name && data.name !== this.name) this.setName(data.name);
   }
 
-  public update(dt: number, camYaw: number, grid: WorldGrid, demoActive: boolean): void {
-    this.mesh.visible = !demoActive;
+  public update(dt: number, camYaw: number, grid: WorldGrid): void {
+    this.mesh.visible = true;
     const blend = Math.min(1, dt * 14);
     this.x += (this.targetX - this.x) * blend;
     this.z += (this.targetZ - this.z) * blend;

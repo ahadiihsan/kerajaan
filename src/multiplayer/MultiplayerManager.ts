@@ -132,9 +132,9 @@ export class MultiplayerManager {
     this.send({ type: 'wood_deposit', amount });
   }
 
-  public update(dt: number, camYaw: number, demoActive: boolean): void {
+  public update(dt: number, camYaw: number): void {
     for (const peer of this.peers.values()) {
-      peer.update(dt, camYaw, this.grid, demoActive);
+      peer.update(dt, camYaw, this.grid);
     }
 
     if (this.isConnected && this.hero) {

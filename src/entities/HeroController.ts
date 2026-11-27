@@ -579,14 +579,10 @@ export class HeroController {
     return this.axeEquipped ? 4 : 0;
   }
 
-  public update(dt: number, camYaw: number, camRight: THREE.Vector3, demoActive: boolean): void {
-    this.mesh.visible = this.marker.visible = !demoActive;
-    if (this.grid.gridOverlay) this.grid.gridOverlay.visible = !demoActive;
-    if (this.buildingSite) this.buildingSite.mesh.visible = !demoActive;
-    if (demoActive) {
-      for (const drop of this.woodDrops) drop.mesh.visible = false;
-      return;
-    }
+  public update(dt: number, camYaw: number, camRight: THREE.Vector3): void {
+    this.mesh.visible = this.marker.visible = true;
+    if (this.grid.gridOverlay) this.grid.gridOverlay.visible = true;
+    if (this.buildingSite) this.buildingSite.mesh.visible = true;
 
     if (!this.step) {
       const direction = this.queuedMove ?? [...this.heldMoves.values()].at(-1);

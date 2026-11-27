@@ -174,28 +174,11 @@ export class Engine {
     }
   }
 
-  public camTo(g: Partial<CameraGoal>, dur: number): Promise<void> {
-    const s = {
-      yaw: this.goal.yaw,
-      pitch: this.goal.pitch,
-      dist: this.goal.dist,
-      fov: this.goal.fov,
-      target: this.goal.target.clone(),
-    };
-    return this.tween(dur, (k) => {
-      for (const key of ['yaw', 'pitch', 'dist', 'fov'] as const) {
-        if (g[key] !== undefined) this.goal[key] = lerp(s[key], g[key]!, k);
-      }
-      if (g.target) this.goal.target.lerpVectors(s.target, g.target, k);
-    });
-  }
-
   public updateCamera(
     dt: number,
     opts: {
       followHero: boolean;
       followSelected: boolean;
-      demoActive: boolean;
       heroPos: { x: number; y: number; z: number };
       selectedPos: { x: number; y: number; z: number; hidden: boolean } | null;
       skyGroup: THREE.Group;
@@ -205,10 +188,10 @@ export class Engine {
     }
   ): void {
     const k = 1 - Math.exp(-dt * 5);
-    if (!opts.followHero && world.autoOrbit && !opts.demoActive && world.T - this.lastInput > 6) {
+    if (!opts.followHero && world.autoOrbit && world.T - this.lastInput > 6) {
       this.goal.yaw += dt * 0.035;
     }
-    if (opts.followHero && !opts.demoActive) {
+    if (opts.followHero) {
       this.goal.target.set(opts.heroPos.x, opts.heroPos.y + 0.75, opts.heroPos.z);
     } else if (opts.followSelected && opts.selectedPos && !opts.selectedPos.hidden) {
       this.goal.target.lerp(

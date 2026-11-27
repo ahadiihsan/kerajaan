@@ -17,7 +17,6 @@ import { createVillagers } from './entities/Villager';
 import { HeroController } from './entities/HeroController';
 import { MultiplayerManager } from './multiplayer/MultiplayerManager';
 import { HUD } from './ui/HUD';
-import { AutoDemo } from './ui/AutoDemo';
 
 function bootstrap(): void {
   const canvas = document.getElementById('c') as HTMLCanvasElement | null;
@@ -122,22 +121,6 @@ function bootstrap(): void {
     multiplayer,
   });
 
-  const autoDemo = new AutoDemo({
-    engine,
-    env,
-    audio,
-    buildings,
-    dragon,
-    villagers,
-    hero,
-    hud,
-  });
-  hud.bindAutoDemo(
-    () => autoDemo.start(),
-    () => autoDemo.active
-  );
-  (window as unknown as { startAutoDemo: () => Promise<void> }).startAutoDemo = () => autoDemo.start();
-
   const onResize = () =>
     engine.resize((pr) => {
       particles.fxAdd.mat.uniforms.pr.value =
@@ -162,19 +145,18 @@ function bootstrap(): void {
 
     engine.updateTweens(real);
     if (world.flow) world.time = (world.time + dt * 0.08) % 24;
-    if (world.raid && (world.raidT += dt) > 34 && !autoDemo.active) hud.endRaid();
+    if (world.raid && (world.raidT += dt) > 34) hud.endRaid();
 
     env.applyEnvironment(dt, engine.scene, buildings, MAT, audio);
     tempTint.copy(env.tint);
 
-    hero.update(dt, engine.cam.yaw, engine.camRight, autoDemo.active);
-    multiplayer.update(dt, engine.cam.yaw, autoDemo.active);
+    hero.update(dt, engine.cam.yaw, engine.camRight);
+    multiplayer.update(dt, engine.cam.yaw);
     updateWildlife(world.T);
 
     engine.updateCamera(dt, {
       followHero: hud.followHero,
       followSelected: hud.follow,
-      demoActive: autoDemo.active,
       heroPos: { x: hero.x, y: grid.groundY(hero.x, hero.z), z: hero.z },
       selectedPos: hud.selected
         ? {
@@ -245,7 +227,6 @@ function bootstrap(): void {
     hud.updateUI(dt);
     engine.render();
     hud.updateNameLabels(now);
-    autoDemo.compositeIfActive();
   }
 
   requestAnimationFrame(frame);

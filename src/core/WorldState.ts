@@ -82,10 +82,3 @@ export const phaseName = (t: number): string =>
 
 export const weatherName = (w: number): string =>
   w < 0.15 ? 'Clear skies' : w < 0.4 ? 'Overcast' : w < 0.7 ? 'Rain' : 'Heavy Thunderstorm';
-
-export interface OverlayState {
-  caption: { title: string; sub: string; t0: number } | null;
-  banner: { title: string; sub: string; style: string; t0: number; until: number } | null;
-}
-
-export const overlay: OverlayState = { caption: null, banner: null };
